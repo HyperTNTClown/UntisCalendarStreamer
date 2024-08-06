@@ -1,0 +1,26 @@
+[package]
+name = "UntisSplitter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# untis = { git = "https://github.com/luleyleo/untis-rs.git" }
+untis = { path = "../untis-rs/" }
+chrono = "0.4"
+ics = "0.5.8"
+hyper = { version = "1.4.1", features = ["http2", "http1", "server"] }
+hyper-util = { version = "0.1.6", features = [
+  "http1",
+  "http2",
+  "server",
+  "server-auto",
+  "server-graceful",
+  "service",
+  "tokio",
+] }
+tokio = { version = "1", features = ["full"] }
+bytes = "1.7.1"
+http-body-util = "0.1.2"
+arcshift = "0.1.6"
+uid = "0.1.7"
+uuid = { version = "1.10.0", features = ["fast-rng", "v4"] }
