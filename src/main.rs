@@ -14,7 +14,10 @@ use chrono::{Datelike, Days, Timelike};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
 use hyper::{body::Incoming, server::conn::http1, service::Service, Method, Request, Response};
 use hyper_util::rt::TokioIo;
-use ics::{Event, ICalendar};
+use ics::{
+    properties::{DtEnd, DtStart},
+    Event, ICalendar,
+};
 use tokio::net::TcpListener;
 use untis::{Date, IdItem};
 
@@ -93,7 +96,7 @@ fn fetch() -> Result<FetchResult, untis::Error> {
         let mut events: HashMap<String, Vec<Event>> = HashMap::new();
         timetable.into_iter().for_each(|el| {
             if let Some(IdItem { name: subject, .. }) = el.subjects.first() {
-                let event = Event::new(
+                let mut event = Event::new(
                     format!(
                         "{}",
                         el.lsnumber
@@ -101,8 +104,41 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                                 * el.start_time.0.hour() as usize
                                 + el.start_time.minute() as usize)
                     ),
-                    client.last_update_time().unwrap().timestamp().to_string(),
+                    client
+                        .last_update_time()
+                        .unwrap()
+                        .format("%Y%m%dT%H%M%S")
+                        .to_string(),
                 );
+                let start = el
+                    .date
+                    .0
+                    .and_hms_opt(
+                        el.start_time.hour(),
+                        el.start_time.minute(),
+                        el.start_time.second(),
+                    )
+                    .unwrap()
+                    .format("%Y%m%dT%H%M%S")
+                    .to_string();
+                let end = el
+                    .date
+                    .0
+                    .and_hms_opt(
+                        el.end_time.hour(),
+                        el.end_time.minute(),
+                        el.end_time.second(),
+                    )
+                    .unwrap()
+                    .format("%Y%m%dT%H%M%S")
+                    .to_string();
+                event.push(ics::properties::Summary::new(format!(
+                    "{}-{}",
+                    el.subjects.first().unwrap().name,
+                    el.rooms.first().unwrap().name
+                )));
+                event.push(DtStart::new(start));
+                event.push(DtEnd::new(end));
                 match events.get_mut(subject) {
                     Some(vec) => vec.push(event),
                     None => {
@@ -127,7 +163,7 @@ fn fetch() -> Result<FetchResult, untis::Error> {
 
 #[tokio::main]
 async fn main() {
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3022));
     let listener = TcpListener::bind(addr).await.unwrap();
 
     let mut svc = Svc::new();

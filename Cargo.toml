@@ -24,3 +24,10 @@ http-body-util = "0.1.2"
 arcshift = "0.1.6"
 uid = "0.1.7"
 uuid = { version = "1.10.0", features = ["fast-rng", "v4"] }
+
+[workspace.metadata.cross.target.aarch64-unknown-linux-gnu]
+# Install libssl-dev:arm64, see <https://github.com/cross-rs/cross/blob/main/docs/custom_images.md#adding-dependencies-to-existing-images>
+pre-build = [
+  "dpkg --add-architecture $CROSS_DEB_ARCH",
+  "apt-get update && apt-get --assume-yes install libssl-dev:$CROSS_DEB_ARCH",
+]
