@@ -4,8 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# untis = { git = "https://github.com/luleyleo/untis-rs.git" }
-untis = { path = "../untis-rs/" }
+untis = { git = "https://github.com/HyperTNTClown/untis-rs.git" }
 chrono = "0.4"
 ics = "0.5.8"
 hyper = { version = "1.4.1", features = ["http2", "http1", "server"] }
