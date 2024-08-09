@@ -81,6 +81,7 @@ fn fetch() -> Result<FetchResult, untis::Error> {
 
     let mut client = gamma.client_login("Jahrgang12", "Goofy23")?;
     let last_updated = client.last_update_time().unwrap().timestamp();
+    // println!("{:?}", client.subjects().unwrap());
     let really_fetch = move || {
         let mut data = TimeTableData::default();
         let next_week = Date(
@@ -94,6 +95,7 @@ fn fetch() -> Result<FetchResult, untis::Error> {
             .unwrap();
 
         let mut events: HashMap<String, Vec<Event>> = HashMap::new();
+        let subjects = client.subjects().unwrap();
         timetable.into_iter().for_each(|el| {
             if let Some(IdItem { name: subject, .. }) = el.subjects.first() {
                 let mut event = Event::new(
@@ -132,11 +134,41 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                     .unwrap()
                     .format("%Y%m%dT%H%M%S")
                     .to_string();
-                event.push(ics::properties::Summary::new(format!(
-                    "{}-{}",
-                    el.subjects.first().unwrap().name,
-                    el.rooms.first().unwrap().name
-                )));
+                match subjects.iter().find(|sub| {
+                    sub.name
+                        == el
+                            .subjects
+                            .first()
+                            .map(|el| el.name.clone())
+                            .unwrap_or_default()
+                }) {
+                    Some(subj) => {
+                        event.push(ics::properties::Summary::new(format!(
+                            "{} - {}",
+                            subj.long_name,
+                            el.rooms.first().unwrap().name
+                        )));
+                        event.push(ics::properties::Description::new(
+                            el.subjects
+                                .first()
+                                .map(|el| el.name.clone())
+                                .unwrap_or_default(),
+                        ));
+                    }
+                    None => {
+                        event.push(ics::properties::Summary::new(format!(
+                            "{}-{}",
+                            el.subjects
+                                .first()
+                                .map(|el| el.name.clone())
+                                .unwrap_or_default(),
+                            el.rooms
+                                .first()
+                                .map(|el| el.name.clone())
+                                .unwrap_or_default()
+                        )));
+                    }
+                };
                 event.push(DtStart::new(start));
                 event.push(DtEnd::new(end));
                 match events.get_mut(subject) {

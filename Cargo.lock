@@ -1327,6 +1327,7 @@ dependencies = [
 [[package]]
 name = "untis"
 version = "1.0.0"
+source = "git+https://github.com/HyperTNTClown/untis-rs.git#18ba87c687b41a5f1fc75e7c12cf64beb1a7056e"
 dependencies = [
  "chrono",
  "reqwest",
