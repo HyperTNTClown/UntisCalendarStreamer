@@ -15,7 +15,7 @@ use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
 use hyper::{body::Incoming, server::conn::http1, service::Service, Method, Request, Response};
 use hyper_util::rt::TokioIo;
 use ics::{
-    properties::{DtEnd, DtStart},
+    properties::{DtEnd, DtStart, Status},
     Event, ICalendar,
 };
 use tokio::net::TcpListener;
@@ -158,6 +158,11 @@ fn fetch() -> Result<FetchResult, untis::Error> {
             };
             event.push(DtStart::new(start));
             event.push(DtEnd::new(end));
+            match el.code {
+                untis::LessonCode::Regular => (),
+                untis::LessonCode::Irregular => (),
+                untis::LessonCode::Cancelled => event.push(Status::cancelled()),
+            };
             match events.get_mut(&subject) {
                 Some(vec) => vec.push(event),
                 None => {
