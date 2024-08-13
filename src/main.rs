@@ -3,7 +3,9 @@ use std::{
     fmt::Display,
     future::Future,
     net::SocketAddr,
+    ops::DerefMut,
     pin::Pin,
+    str::FromStr,
     thread::{self, sleep},
     time::Duration,
 };
@@ -97,85 +99,95 @@ fn fetch() -> Result<FetchResult, untis::Error> {
         let mut events: HashMap<String, Vec<Event>> = HashMap::new();
         let subjects = client.subjects().unwrap();
         timetable.into_iter().for_each(|el| {
-            if let Some(IdItem { name: subject, .. }) = el.subjects.first() {
-                let mut event = Event::new(
-                    format!(
-                        "{}",
-                        el.lsnumber
-                            + (el.date.to_chrono().num_days_from_ce() as usize
-                                * el.start_time.0.hour() as usize
-                                + el.start_time.minute() as usize)
-                    ),
-                    client
-                        .last_update_time()
-                        .unwrap()
-                        .format("%Y%m%dT%H%M%S")
-                        .to_string(),
-                );
-                let start = el
-                    .date
-                    .0
-                    .and_hms_opt(
-                        el.start_time.hour(),
-                        el.start_time.minute(),
-                        el.start_time.second(),
-                    )
+            let subject = {
+                let tmp = el
+                    .subjects
+                    .first()
+                    .map(|el| el.name.to_owned())
+                    .unwrap_or_default();
+                if tmp == String::default() {
+                    ("default").to_owned()
+                } else {
+                    tmp
+                }
+            };
+            let mut event = Event::new(
+                format!(
+                    "{}",
+                    el.lsnumber
+                        + (el.date.to_chrono().num_days_from_ce() as usize
+                            * el.start_time.0.hour() as usize
+                            + el.start_time.minute() as usize)
+                ),
+                client
+                    .last_update_time()
                     .unwrap()
                     .format("%Y%m%dT%H%M%S")
-                    .to_string();
-                let end = el
-                    .date
-                    .0
-                    .and_hms_opt(
-                        el.end_time.hour(),
-                        el.end_time.minute(),
-                        el.end_time.second(),
-                    )
-                    .unwrap()
-                    .format("%Y%m%dT%H%M%S")
-                    .to_string();
-                match subjects.iter().find(|sub| {
-                    sub.name
-                        == el
-                            .subjects
+                    .to_string(),
+            );
+            let start = el
+                .date
+                .0
+                .and_hms_opt(
+                    el.start_time.hour(),
+                    el.start_time.minute(),
+                    el.start_time.second(),
+                )
+                .unwrap()
+                .format("%Y%m%dT%H%M%S")
+                .to_string();
+            let end = el
+                .date
+                .0
+                .and_hms_opt(
+                    el.end_time.hour(),
+                    el.end_time.minute(),
+                    el.end_time.second(),
+                )
+                .unwrap()
+                .format("%Y%m%dT%H%M%S")
+                .to_string();
+            match subjects.iter().find(|sub| {
+                sub.name
+                    == el
+                        .subjects
+                        .first()
+                        .map(|el| el.name.clone())
+                        .unwrap_or_default()
+            }) {
+                Some(subj) => {
+                    event.push(ics::properties::Summary::new(format!(
+                        "{} - {}",
+                        subj.long_name,
+                        el.rooms.first().unwrap().name
+                    )));
+                    event.push(ics::properties::Description::new(
+                        el.subjects
+                            .first()
+                            .map(|el| el.name.clone())
+                            .unwrap_or_default(),
+                    ));
+                }
+                None => {
+                    event.push(ics::properties::Summary::new(format!(
+                        "{}-{}",
+                        el.subjects
+                            .first()
+                            .map(|el| el.name.clone())
+                            .unwrap_or_default(),
+                        el.rooms
                             .first()
                             .map(|el| el.name.clone())
                             .unwrap_or_default()
-                }) {
-                    Some(subj) => {
-                        event.push(ics::properties::Summary::new(format!(
-                            "{} - {}",
-                            subj.long_name,
-                            el.rooms.first().unwrap().name
-                        )));
-                        event.push(ics::properties::Description::new(
-                            el.subjects
-                                .first()
-                                .map(|el| el.name.clone())
-                                .unwrap_or_default(),
-                        ));
-                    }
-                    None => {
-                        event.push(ics::properties::Summary::new(format!(
-                            "{}-{}",
-                            el.subjects
-                                .first()
-                                .map(|el| el.name.clone())
-                                .unwrap_or_default(),
-                            el.rooms
-                                .first()
-                                .map(|el| el.name.clone())
-                                .unwrap_or_default()
-                        )));
-                    }
-                };
-                event.push(DtStart::new(start));
-                event.push(DtEnd::new(end));
-                match events.get_mut(subject) {
-                    Some(vec) => vec.push(event),
-                    None => {
-                        events.insert(subject.clone(), vec![event]);
-                    }
+                    )));
+                }
+            };
+            event.push(DtStart::new(start));
+            event.push(DtEnd::new(end));
+            match events.get_mut(&subject) {
+                Some(vec) => vec.push(event),
+                None => {
+                    events.insert(subject.clone(), vec![event]);
                 }
             }
         });
@@ -238,6 +250,12 @@ impl Service<Request<Incoming>> for Svc {
                         .iter()
                         .for_each(|el| calender.add_event(el.clone()));
                 });
+                self.data
+                    .blocks
+                    .get("default")
+                    .unwrap()
+                    .iter()
+                    .for_each(|el| calender.add_event(el.clone()));
                 Response::new(full(calender.to_string()))
             }
             _ => Response::new(empty()),
