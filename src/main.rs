@@ -3,9 +3,7 @@ use std::{
     fmt::Display,
     future::Future,
     net::SocketAddr,
-    ops::DerefMut,
     pin::Pin,
-    str::FromStr,
     thread::{self, sleep},
     time::Duration,
 };
@@ -21,7 +19,7 @@ use ics::{
     Event, ICalendar,
 };
 use tokio::net::TcpListener;
-use untis::{Date, IdItem};
+use untis::{Date, Lesson, Time};
 
 #[derive(Clone)]
 struct Svc {
@@ -56,8 +54,6 @@ impl Display for TimeTableData {
 }
 
 fn fetch_task(mut arc: ArcShift<TimeTableData>) {
-    // let mut interval = interval(Duration::from_secs(300));
-
     loop {
         match fetch() {
             Ok((timestamp, func)) => {
@@ -83,7 +79,6 @@ fn fetch() -> Result<FetchResult, untis::Error> {
 
     let mut client = gamma.client_login("Jahrgang12", "Goofy23")?;
     let last_updated = client.last_update_time().unwrap().timestamp();
-    // println!("{:?}", client.subjects().unwrap());
     let really_fetch = move || {
         let mut data = TimeTableData::default();
         let next_week = Date(
@@ -125,28 +120,7 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                     .format("%Y%m%dT%H%M%S")
                     .to_string(),
             );
-            let start = el
-                .date
-                .0
-                .and_hms_opt(
-                    el.start_time.hour(),
-                    el.start_time.minute(),
-                    el.start_time.second(),
-                )
-                .unwrap()
-                .format("%Y%m%dT%H%M%S")
-                .to_string();
-            let end = el
-                .date
-                .0
-                .and_hms_opt(
-                    el.end_time.hour(),
-                    el.end_time.minute(),
-                    el.end_time.second(),
-                )
-                .unwrap()
-                .format("%Y%m%dT%H%M%S")
-                .to_string();
+            let (start, end) = start_end_timestamp(&el);
             match subjects.iter().find(|sub| {
                 sub.name
                     == el
@@ -194,11 +168,25 @@ fn fetch() -> Result<FetchResult, untis::Error> {
 
         data.blocks = events;
 
-        // println!("{:?}", events.keys());
-
         data
     };
     Ok((last_updated, Box::new(really_fetch)))
+}
+
+// Creates the start and end timestamps of the given Untis lesson
+fn start_end_timestamp(lesson: &Lesson) -> (String, String) {
+    let start = create_timestamp(&lesson.start_time, &lesson.date);
+    let end = create_timestamp(&lesson.end_time, &lesson.date);
+    (start, end)
+}
+
+/// Creates an ICS timestamp for the given untis::Time and untis::Date
+fn create_timestamp(time: &Time, date: &Date) -> String {
+    date.0
+        .and_hms_opt(time.hour(), time.minute(), time.second())
+        .unwrap()
+        .format("%Y%m%dT%H%M%S")
+        .to_string()
 }
 
 // fn main() {
@@ -242,20 +230,10 @@ impl Service<Request<Incoming>> for Svc {
             (&Method::GET, "/") => Response::new(full(req.uri().query().unwrap().to_string())),
             (&Method::GET, "/ics") => {
                 let mut calender = ICalendar::new("2.0", "ics-rs");
+                add_to_calendar(&mut calender, &self.data, "default");
                 req.uri().query().unwrap().split(',').for_each(|el| {
-                    self.data
-                        .blocks
-                        .get(el)
-                        .unwrap()
-                        .iter()
-                        .for_each(|el| calender.add_event(el.clone()));
+                    add_to_calendar(&mut calender, &self.data, el);
                 });
-                self.data
-                    .blocks
-                    .get("default")
-                    .unwrap()
-                    .iter()
-                    .for_each(|el| calender.add_event(el.clone()));
                 Response::new(full(calender.to_string()))
             }
             _ => Response::new(empty()),
@@ -274,4 +252,12 @@ fn full<T: Into<Bytes>>(chunk: T) -> BoxBody<Bytes, hyper::Error> {
     Full::new(chunk.into())
         .map_err(|never| match never {})
         .boxed()
+}
+
+fn add_to_calendar(calendar: &mut ICalendar, data: &ArcShift<TimeTableData>, block_name: &str) {
+    data.blocks
+        .get(block_name)
+        .unwrap()
+        .iter()
+        .for_each(|el| calendar.add_event(el.clone()));
 }
