@@ -15,6 +15,7 @@ use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
 use hyper::{body::Incoming, server::conn::http1, service::Service, Method, Request, Response};
 use hyper_util::rt::TokioIo;
 use ics::{
+    components::Property,
     properties::{DtEnd, DtStart, Status},
     Event, ICalendar,
 };
@@ -156,8 +157,8 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                     )));
                 }
             };
-            event.push(DtStart::new(start));
-            event.push(DtEnd::new(end));
+            event.push(Property::new("DTSTART;/Europe/Berlin", start));
+            event.push(Property::new("DTEND;/Europe/Berlin", end));
             match el.code {
                 untis::LessonCode::Regular => (),
                 untis::LessonCode::Irregular => (),
