@@ -10,12 +10,11 @@ use std::{
 
 use arcshift::ArcShift;
 use bytes::Bytes;
-use chrono::{Datelike, Days, Timelike};
+use chrono::{Datelike, Days, Local, Timelike};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
 use hyper::{body::Incoming, server::conn::http1, service::Service, Method, Request, Response};
 use hyper_util::rt::TokioIo;
 use ics::{
-    components::Property,
     properties::{DtEnd, DtStart, Status},
     Event, ICalendar,
 };
@@ -157,8 +156,8 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                     )));
                 }
             };
-            event.push(Property::new("DTSTART;TZID=/Europe/Berlin", start));
-            event.push(Property::new("DTEND;TZID=/Europe/Berlin", end));
+            event.push(DtStart::new(start));
+            event.push(DtEnd::new(end));
             match el.code {
                 untis::LessonCode::Regular => (),
                 untis::LessonCode::Irregular => (),
@@ -188,11 +187,14 @@ fn start_end_timestamp(lesson: &Lesson) -> (String, String) {
 
 /// Creates an ICS timestamp for the given untis::Time and untis::Date
 fn create_timestamp(time: &Time, date: &Date) -> String {
-    date.0
+    let date_time = date
+        .0
         .and_hms_opt(time.hour(), time.minute(), time.second())
         .unwrap()
-        .format("%Y%m%dT%H%M%S")
-        .to_string()
+        .and_local_timezone(Local)
+        .unwrap()
+        .to_utc();
+    date_time.format("%Y%m%dT%H%M%SZ").to_string()
 }
 
 // fn main() {
@@ -235,12 +237,12 @@ impl Service<Request<Incoming>> for Svc {
         let res = match (req.method(), req.uri().path()) {
             (&Method::GET, "/") => Response::new(full(req.uri().query().unwrap().to_string())),
             (&Method::GET, "/ics") => {
-                let mut calender = ICalendar::new("2.0", "ics-rs");
-                add_to_calendar(&mut calender, &self.data, "default");
+                let mut calendar = ICalendar::new("2.0", "ics-rs");
+                add_to_calendar(&mut calendar, &self.data, "default");
                 req.uri().query().unwrap().split(',').for_each(|el| {
-                    add_to_calendar(&mut calender, &self.data, el);
+                    add_to_calendar(&mut calendar, &self.data, el);
                 });
-                Response::new(full(calender.to_string()))
+                Response::new(full(calendar.to_string()))
             }
             _ => Response::new(empty()),
         };
