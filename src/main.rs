@@ -16,7 +16,7 @@ use hyper::{body::Incoming, server::conn::http1, service::Service, Method, Reque
 use hyper_util::rt::TokioIo;
 use ics::{
     properties::{DtEnd, DtStart, Status},
-    Event, ICalendar, TimeZone,
+    Event, ICalendar,
 };
 use tokio::net::TcpListener;
 use untis::{Date, Lesson, Time};
@@ -190,7 +190,7 @@ fn create_timestamp(time: &Time, date: &Date) -> String {
     date.0
         .and_hms_opt(time.hour(), time.minute(), time.second())
         .unwrap()
-        .format("/Europe/Berlin:%Y%m%dT%H%M%S")
+        .format("%Y%m%dT%H%M%S")
         .to_string()
 }
 
