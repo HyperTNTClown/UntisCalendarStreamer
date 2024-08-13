@@ -157,8 +157,8 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                     )));
                 }
             };
-            event.push(Property::new("DTSTART;/Europe/Berlin", start));
-            event.push(Property::new("DTEND;/Europe/Berlin", end));
+            event.push(Property::new("DTSTART;TZID=/Europe/Berlin", start));
+            event.push(Property::new("DTEND;TZID=/Europe/Berlin", end));
             match el.code {
                 untis::LessonCode::Regular => (),
                 untis::LessonCode::Irregular => (),
