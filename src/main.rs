@@ -263,9 +263,7 @@ fn full<T: Into<Bytes>>(chunk: T) -> BoxBody<Bytes, hyper::Error> {
 }
 
 fn add_to_calendar(calendar: &mut ICalendar, data: &ArcShift<TimeTableData>, block_name: &str) {
-    data.blocks
-        .get(block_name)
-        .unwrap()
-        .iter()
-        .for_each(|el| calendar.add_event(el.clone()));
+    if let Some(el) = data.blocks.get(block_name) {
+        el.iter().for_each(|el| calendar.add_event(el.clone()))
+    }
 }
