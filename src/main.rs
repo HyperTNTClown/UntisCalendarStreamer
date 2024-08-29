@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt::Display,
+    fmt::{Debug, Display},
     future::Future,
     net::SocketAddr,
     pin::Pin,
@@ -16,7 +16,7 @@ use hyper::{body::Incoming, server::conn::http1, service::Service, Method, Reque
 use hyper_util::rt::TokioIo;
 use ics::{
     properties::{DtEnd, DtStart, Status},
-    Event, ICalendar,
+    Event, ICalendar, ToDo,
 };
 use tokio::net::TcpListener;
 use untis::{Date, Lesson, Time};
@@ -38,6 +38,7 @@ impl Svc {
 struct TimeTableData {
     timestamp: i64,
     blocks: HashMap<String, Vec<Event<'static>>>,
+    tasks: HashMap<String, Vec<ToDo<'static>>>,
 }
 
 impl Display for TimeTableData {
@@ -173,6 +174,13 @@ fn fetch() -> Result<FetchResult, untis::Error> {
 
         data.blocks = events;
 
+        let start = Date::current_week_begin().format("%Y%m%d");
+        let end = next_week.relative_week_end().format("%Y%m%d");
+
+        let tasks = untis_httpapi::homework(&start.to_string(), &end.to_string());
+
+        data.tasks = tasks;
+
         data
     };
     Ok((last_updated, Box::new(really_fetch)))
@@ -196,10 +204,6 @@ fn create_timestamp(time: &Time, date: &Date) -> String {
         .to_utc();
     date_time.format("%Y%m%dT%H%M%SZ").to_string()
 }
-
-// fn main() {
-//     fetch().unwrap().1();
-// }
 
 #[tokio::main]
 async fn main() {
@@ -265,5 +269,8 @@ fn full<T: Into<Bytes>>(chunk: T) -> BoxBody<Bytes, hyper::Error> {
 fn add_to_calendar(calendar: &mut ICalendar, data: &ArcShift<TimeTableData>, block_name: &str) {
     if let Some(el) = data.blocks.get(block_name) {
         el.iter().for_each(|el| calendar.add_event(el.clone()))
+    }
+    if let Some(el) = data.tasks.get(block_name) {
+        el.iter().for_each(|el| calendar.add_todo(el.clone()))
     }
 }
