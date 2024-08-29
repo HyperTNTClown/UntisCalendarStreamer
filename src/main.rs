@@ -18,6 +18,8 @@ use ics::{
     properties::{DtEnd, DtStart, Status},
     Event, ICalendar, ToDo,
 };
+use log::info;
+use simplelog::Config;
 use tokio::net::TcpListener;
 use untis::{Date, Lesson, Time};
 
@@ -65,7 +67,7 @@ fn fetch_task(mut arc: ArcShift<TimeTableData>) {
                 }
             }
             Err(_) => {
-                eprintln!("Großes Problemchen irgendwie mit Untis zu verbinden. Niiiicht guuuht.")
+                log::error!("Großes Problemchen irgendwie mit Untis zu verbinden. Niiiicht guuuht.")
             }
         }
         sleep(Duration::from_secs(300));
@@ -81,6 +83,7 @@ fn fetch() -> Result<FetchResult, untis::Error> {
     let mut client = gamma.client_login("Jahrgang12", "Goofy23")?;
     let last_updated = client.last_update_time().unwrap().timestamp();
     let really_fetch = move || {
+        info!("Fetching an update");
         let mut data = TimeTableData::default();
         let next_week = Date(
             Date::today()
@@ -207,6 +210,13 @@ fn create_timestamp(time: &Time, date: &Date) -> String {
 
 #[tokio::main]
 async fn main() {
+    simplelog::TermLogger::init(
+        log::LevelFilter::Info,
+        Config::default(),
+        simplelog::TerminalMode::Mixed,
+        simplelog::ColorChoice::Auto,
+    )
+    .unwrap();
     let addr = SocketAddr::from(([0, 0, 0, 0], 3022));
     let listener = TcpListener::bind(addr).await.unwrap();
 
@@ -224,7 +234,7 @@ async fn main() {
 
         tokio::task::spawn(async move {
             if let Err(_err) = http1::Builder::new().serve_connection(io, svc).await {
-                eprintln!("Error serving");
+                log::error!("Error serving");
             }
         });
     }
@@ -239,7 +249,7 @@ impl Service<Request<Incoming>> for Svc {
 
     fn call(&self, req: Request<Incoming>) -> Self::Future {
         let res = match (req.method(), req.uri().path()) {
-            (&Method::GET, "/") => Response::new(full(req.uri().query().unwrap().to_string())),
+            (&Method::GET, "/") => Response::new(full("Ask marvin for help")),
             (&Method::GET, "/ics") => {
                 let mut calendar = ICalendar::new("2.0", "ics-rs");
                 add_to_calendar(&mut calendar, &self.data, "default");
