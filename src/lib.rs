@@ -148,7 +148,7 @@ pub fn homework(start_date: &str, end_date: &str) -> HashMap<String, Vec<ics::To
     data.data.homeworks.into_iter().for_each(|el| {
         let mut task = ics::ToDo::new(el.id.to_string(), stamp.clone());
         task.push(Property::new("DTSTART", el.date.to_string()));
-        task.push(Property::new("DESCRIPTION", el.text));
+        task.push(Property::new("DESCRIPTION", el.text.clone()));
         let lesson = data
             .data
             .lessons
@@ -156,7 +156,10 @@ pub fn homework(start_date: &str, end_date: &str) -> HashMap<String, Vec<ics::To
             .find(|le| le.id == el.lesson_id)
             .map(|el| el.subject.clone())
             .unwrap_or_default();
-        task.push(Property::new("SUMMARY", lesson.clone()));
+        task.push(Property::new(
+            "SUMMARY",
+            format!("{} - {}", lesson.clone(), el.text),
+        ));
         task.push(Property::new("DUE", el.due_date.to_string()));
         match tasks.get_mut(&lesson) {
             Some(vec) => vec.push(task),
