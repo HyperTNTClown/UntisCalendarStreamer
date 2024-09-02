@@ -40,7 +40,7 @@ impl Svc {
 struct TimeTableData {
     timestamp: i64,
     blocks: HashMap<String, Vec<Event<'static>>>,
-    tasks: HashMap<String, Vec<ToDo<'static>>>,
+    tasks: HashMap<String, Vec<Event<'static>>>,
 }
 
 impl Display for TimeTableData {
@@ -281,6 +281,6 @@ fn add_to_calendar(calendar: &mut ICalendar, data: &ArcShift<TimeTableData>, blo
         el.iter().for_each(|el| calendar.add_event(el.clone()))
     }
     if let Some(el) = data.tasks.get(block_name) {
-        el.iter().for_each(|el| calendar.add_todo(el.clone()))
+        el.iter().for_each(|el| calendar.add_event(el.clone()))
     }
 }

@@ -106,7 +106,7 @@ pub struct Lesson {
     pub lesson_type: String,
 }
 
-pub fn homework(start_date: &str, end_date: &str) -> HashMap<String, Vec<ics::ToDo<'static>>> {
+pub fn homework(start_date: &str, end_date: &str) -> HashMap<String, Vec<ics::Event<'static>>> {
     let url = "https://nessa.webuntis.com/WebUntis/j_spring_security_check";
     let client = reqwest::blocking::Client::new();
     let res = client
@@ -144,10 +144,10 @@ pub fn homework(start_date: &str, end_date: &str) -> HashMap<String, Vec<ics::To
     let data: Root = serde_json::from_str(&res.text().unwrap()).unwrap();
     // println!("{:?}", data.data);
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S").to_string();
-    let mut tasks: HashMap<String, Vec<ics::ToDo>> = HashMap::new();
+    let mut tasks: HashMap<String, Vec<ics::Event>> = HashMap::new();
     data.data.homeworks.into_iter().for_each(|el| {
-        let mut task = ics::ToDo::new(el.id.to_string(), stamp.clone());
-        task.push(Property::new("DTSTART", el.date.to_string()));
+        let mut task = ics::Event::new(el.id.to_string(), stamp.clone());
+        // task.push(Property::new("DTSTART", el.date.to_string()));
         task.push(Property::new("DESCRIPTION", el.text.clone()));
         let lesson = data
             .data
@@ -156,11 +156,9 @@ pub fn homework(start_date: &str, end_date: &str) -> HashMap<String, Vec<ics::To
             .find(|le| le.id == el.lesson_id)
             .map(|el| el.subject.clone())
             .unwrap_or_default();
-        task.push(Property::new(
-            "SUMMARY",
-            format!("{} - {}", lesson.clone(), el.text),
-        ));
-        task.push(Property::new("DUE", el.due_date.to_string()));
+        task.push(Property::new("SUMMARY", format!("🏠 {}", lesson.clone())));
+        task.push(Property::new("DTSTART", el.due_date.to_string()));
+        task.push(Property::new("DTEND", el.due_date.to_string()));
         match tasks.get_mut(&lesson) {
             Some(vec) => vec.push(task),
             None => {
