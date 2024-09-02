@@ -138,10 +138,10 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                 let event = Event::new(
                     format!(
                         "{}",
-                        el[0].lsnumber
-                            + (el[0].date.to_chrono().num_days_from_ce() as usize
-                                * el[0].start_time.0.hour() as usize
-                                + el[0].start_time.minute() as usize)
+                        el[1].lsnumber
+                            + (el[1].date.to_chrono().num_days_from_ce() as usize
+                                * el[1].start_time.0.hour() as usize
+                                + el[1].start_time.minute() as usize)
                     ),
                     client
                         .last_update_time()
