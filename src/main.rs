@@ -97,9 +97,19 @@ fn fetch() -> Result<FetchResult, untis::Error> {
 
         let mut events: HashMap<String, Vec<Event>> = HashMap::new();
         let subjects = client.subjects().unwrap();
+        let mut sorted_timetable: HashMap<(usize, Date), Vec<Lesson>> = HashMap::new();
         timetable.into_iter().for_each(|el| {
+            match sorted_timetable.get_mut(&(el.lsnumber, el.date)) {
+                Some(v) => v.push(el),
+                None => {
+                    sorted_timetable.insert((el.lsnumber, el.date), vec![el]);
+                }
+            }
+        });
+        sorted_timetable.into_iter().map(|el| el.1).for_each(|el| {
+            let double = el.len() == 2 && el[0].code != el[1].code;
             let subject = {
-                let tmp = el
+                let tmp = el[0]
                     .subjects
                     .first()
                     .map(|el| el.name.to_owned())
@@ -110,67 +120,120 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                     tmp
                 }
             };
-            let mut event = Event::new(
+            let mut levents = vec![Event::new(
                 format!(
                     "{}",
-                    el.lsnumber
-                        + (el.date.to_chrono().num_days_from_ce() as usize
-                            * el.start_time.0.hour() as usize
-                            + el.start_time.minute() as usize)
+                    el[0].lsnumber
+                        + (el[0].date.to_chrono().num_days_from_ce() as usize
+                            * el[0].start_time.0.hour() as usize
+                            + el[0].start_time.minute() as usize)
                 ),
                 client
                     .last_update_time()
                     .unwrap()
                     .format("%Y%m%dT%H%M%S")
                     .to_string(),
-            );
-            let (start, end) = start_end_timestamp(&el);
+            )];
+            if double {
+                let event = Event::new(
+                    format!(
+                        "{}",
+                        el[0].lsnumber
+                            + (el[0].date.to_chrono().num_days_from_ce() as usize
+                                * el[0].start_time.0.hour() as usize
+                                + el[0].start_time.minute() as usize)
+                    ),
+                    client
+                        .last_update_time()
+                        .unwrap()
+                        .format("%Y%m%dT%H%M%S")
+                        .to_string(),
+                );
+                levents.push(event);
+            }
+
             match subjects.iter().find(|sub| {
                 sub.name
-                    == el
+                    == el[0]
                         .subjects
                         .first()
                         .map(|el| el.name.clone())
                         .unwrap_or_default()
             }) {
                 Some(subj) => {
-                    event.push(ics::properties::Summary::new(format!(
-                        "{} - {}",
-                        subj.long_name,
-                        el.rooms.first().unwrap().name
-                    )));
-                    event.push(ics::properties::Description::new(
-                        el.subjects
-                            .first()
-                            .map(|el| el.name.clone())
-                            .unwrap_or_default(),
-                    ));
+                    levents.iter_mut().for_each(|ev| {
+                        ev.push(ics::properties::Summary::new(format!(
+                            "{} - {}",
+                            subj.long_name,
+                            el[0].rooms.first().unwrap().name
+                        )))
+                    });
+                    levents.iter_mut().for_each(|ev| {
+                        ev.push(ics::properties::Description::new(
+                            el[0]
+                                .subjects
+                                .first()
+                                .map(|el| el.name.clone())
+                                .unwrap_or_default(),
+                        ))
+                    });
                 }
                 None => {
-                    event.push(ics::properties::Summary::new(format!(
-                        "{}-{}",
-                        el.subjects
-                            .first()
-                            .map(|el| el.name.clone())
-                            .unwrap_or_default(),
-                        el.rooms
-                            .first()
-                            .map(|el| el.name.clone())
-                            .unwrap_or_default()
-                    )));
+                    levents.iter_mut().for_each(|ev| {
+                        ev.push(ics::properties::Summary::new(format!(
+                            "{}-{}",
+                            el[0]
+                                .subjects
+                                .first()
+                                .map(|el| el.name.clone())
+                                .unwrap_or_default(),
+                            el[0]
+                                .rooms
+                                .first()
+                                .map(|el| el.name.clone())
+                                .unwrap_or_default()
+                        )))
+                    });
                 }
             };
-            event.push(DtStart::new(start));
-            event.push(DtEnd::new(end));
-            match el.code {
-                untis::LessonCode::Regular => (),
-                untis::LessonCode::Irregular => (),
-                untis::LessonCode::Cancelled => event.push(Status::cancelled()),
-            };
+            if double {
+                let (start, end) = start_end_timestamp(&el[0], None);
+                levents.get_mut(0).unwrap().push(DtStart::new(start));
+                levents.get_mut(0).unwrap().push(DtEnd::new(end));
+                match el[0].code {
+                    untis::LessonCode::Regular => (),
+                    untis::LessonCode::Irregular => (),
+                    untis::LessonCode::Cancelled => {
+                        levents.get_mut(0).unwrap().push(Status::cancelled())
+                    }
+                };
+                let (start, end) = start_end_timestamp(&el[1], None);
+                levents.get_mut(1).unwrap().push(DtStart::new(start));
+                levents.get_mut(1).unwrap().push(DtEnd::new(end));
+                match el[1].code {
+                    untis::LessonCode::Regular => (),
+                    untis::LessonCode::Irregular => (),
+                    untis::LessonCode::Cancelled => {
+                        levents.get_mut(1).unwrap().push(Status::cancelled())
+                    }
+                };
+            } else {
+                let (start, end) = start_end_timestamp(&el[0], el.get(1));
+                levents.get_mut(0).unwrap().push(DtStart::new(start));
+                levents.get_mut(0).unwrap().push(DtEnd::new(end));
+
+                match el[0].code {
+                    untis::LessonCode::Regular => (),
+                    untis::LessonCode::Irregular => (),
+                    untis::LessonCode::Cancelled => levents
+                        .iter_mut()
+                        .for_each(|ev| ev.push(Status::cancelled())),
+                };
+            }
             match events.get_mut(&subject) {
-                Some(vec) => vec.push(event),
+                Some(vec) => vec.append(&mut levents),
                 None => {
-                    events.insert(subject.clone(), vec![event]);
+                    events.insert(subject.clone(), levents);
                 }
             }
         });
@@ -190,10 +253,25 @@ fn fetch() -> Result<FetchResult, untis::Error> {
 }
 
 // Creates the start and end timestamps of the given Untis lesson
-fn start_end_timestamp(lesson: &Lesson) -> (String, String) {
-    let start = create_timestamp(&lesson.start_time, &lesson.date);
-    let end = create_timestamp(&lesson.end_time, &lesson.date);
-    (start, end)
+fn start_end_timestamp(lesson: &Lesson, lesson2: Option<&Lesson>) -> (String, String) {
+    match lesson2 {
+        Some(lesson2) => {
+            if lesson.start_time < lesson2.start_time {
+                let start = create_timestamp(&lesson.start_time, &lesson.date);
+                let end = create_timestamp(&lesson2.end_time, &lesson2.date);
+                (start, end)
+            } else {
+                let start = create_timestamp(&lesson2.start_time, &lesson2.date);
+                let end = create_timestamp(&lesson.end_time, &lesson.date);
+                (start, end)
+            }
+        }
+        None => {
+            let start = create_timestamp(&lesson.start_time, &lesson.date);
+            let end = create_timestamp(&lesson.end_time, &lesson.date);
+            (start, end)
+        }
+    }
 }
 
 /// Creates an ICS timestamp for the given untis::Time and untis::Date
