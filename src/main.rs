@@ -163,16 +163,16 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                         .unwrap_or_default()
             }) {
                 Some(subj) => {
-                    levents.iter_mut().for_each(|ev| {
+                    levents.iter_mut().enumerate().for_each(|(idx, ev)| {
                         ev.push(ics::properties::Summary::new(format!(
                             "{} - {}",
                             subj.long_name,
-                            el[0].rooms.first().unwrap().name
+                            el[idx].rooms.first().unwrap().name
                         )))
                     });
-                    levents.iter_mut().for_each(|ev| {
+                    levents.iter_mut().enumerate().for_each(|(idx, ev)| {
                         ev.push(ics::properties::Description::new(
-                            el[0]
+                            el[idx]
                                 .subjects
                                 .first()
                                 .map(|el| el.name.clone())
@@ -181,15 +181,15 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                     });
                 }
                 None => {
-                    levents.iter_mut().for_each(|ev| {
+                    levents.iter_mut().enumerate().for_each(|(idx, ev)| {
                         ev.push(ics::properties::Summary::new(format!(
                             "{}-{}",
-                            el[0]
+                            el[idx]
                                 .subjects
                                 .first()
                                 .map(|el| el.name.clone())
                                 .unwrap_or_default(),
-                            el[0]
+                            el[idx]
                                 .rooms
                                 .first()
                                 .map(|el| el.name.clone())
