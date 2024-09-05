@@ -60,6 +60,7 @@ fn fetch_task(mut arc: ArcShift<TimeTableData>) {
     loop {
         match fetch() {
             Ok((timestamp, func)) => {
+                // For now won't happen cuz we don't update the timestamp inside the ArcShift. Will need to think about it, as we don't want to not get homework just because no changes have been happening in the timetable.
                 if timestamp == arc.timestamp {
                     continue;
                 } else {
@@ -107,7 +108,8 @@ fn fetch() -> Result<FetchResult, untis::Error> {
             }
         });
         sorted_timetable.into_iter().map(|el| el.1).for_each(|el| {
-            let double = el.len() == 2 && el[0].code != el[1].code;
+            let double = el.len() == 2
+                && ((el[0].code != el[1].code) || (el[0].rooms[0].name != el[1].rooms[0].name));
             let subject = {
                 let tmp = el[0]
                     .subjects
