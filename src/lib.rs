@@ -148,7 +148,10 @@ pub fn homework(start_date: &str, end_date: &str) -> HashMap<String, Vec<ics::Ev
     data.data.homeworks.into_iter().for_each(|el| {
         let mut task = ics::Event::new(el.id.to_string(), stamp.clone());
         // task.push(Property::new("DTSTART", el.date.to_string()));
-        task.push(Property::new("DESCRIPTION", el.text.clone()));
+        task.push(Property::new(
+            "DESCRIPTION",
+            el.text.clone().replace("\n", "\\n"),
+        ));
         let lesson = data
             .data
             .lessons
