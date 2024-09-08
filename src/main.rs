@@ -18,7 +18,7 @@ use ics::{
     properties::{DtEnd, DtStart, Status},
     Event, ICalendar, ToDo,
 };
-use log::info;
+use log::{debug, info};
 use simplelog::Config;
 use tokio::net::TcpListener;
 use untis::{Date, Lesson, Time};
@@ -291,7 +291,7 @@ fn create_timestamp(time: &Time, date: &Date) -> String {
 #[tokio::main]
 async fn main() {
     simplelog::TermLogger::init(
-        log::LevelFilter::Info,
+        log::LevelFilter::Debug,
         Config::default(),
         simplelog::TerminalMode::Mixed,
         simplelog::ColorChoice::Auto,
@@ -328,6 +328,7 @@ impl Service<Request<Incoming>> for Svc {
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn call(&self, req: Request<Incoming>) -> Self::Future {
+        debug!("{req:?}");
         let res = match (req.method(), req.uri().path()) {
             (&Method::GET, "/") => Response::new(full("Ask marvin for help")),
             (&Method::GET, "/ics") => {
