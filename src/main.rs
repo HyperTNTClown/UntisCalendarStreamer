@@ -12,7 +12,10 @@ use arcshift::ArcShift;
 use bytes::Bytes;
 use chrono::{Datelike, Days, Local, Timelike};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
-use hyper::{body::Incoming, server::conn::http1, service::Service, Method, Request, Response};
+use hyper::{
+    body::Incoming, header::HeaderValue, server::conn::http1, service::Service, Method, Request,
+    Response,
+};
 use hyper_util::rt::TokioIo;
 use ics::{
     properties::{DtEnd, DtStart, Status},
@@ -351,7 +354,12 @@ impl Service<Request<Incoming>> for Svc {
                 req.uri().query().unwrap().split(',').for_each(|el| {
                     add_to_calendar(&mut calendar, &self.data, el);
                 });
-                Response::new(full(calendar.to_string()))
+                let res = Response::new(full(calendar.to_string()));
+                let (mut parts, body) = res.into_parts();
+                parts
+                    .headers
+                    .insert("conent-type", HeaderValue::from_static("text/calendar"));
+                Response::from_parts(parts, body)
             }
             _ => Response::new(empty()),
         };
