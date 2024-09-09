@@ -203,20 +203,32 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                 levents.get_mut(0).unwrap().push(DtStart::new(start));
                 levents.get_mut(0).unwrap().push(DtEnd::new(end));
                 match el[0].code {
-                    untis::LessonCode::Regular => (),
+                    untis::LessonCode::Regular => {
+                        if let Some(el) = levents.get_mut(0) {
+                            el.push(Status::tentative())
+                        }
+                    }
                     untis::LessonCode::Irregular => (),
                     untis::LessonCode::Cancelled => {
-                        levents.get_mut(0).unwrap().push(Status::cancelled())
+                        if let Some(el) = levents.get_mut(0) {
+                            el.push(Status::cancelled())
+                        }
                     }
                 };
                 let (start, end) = start_end_timestamp(&el[1], None);
                 levents.get_mut(1).unwrap().push(DtStart::new(start));
                 levents.get_mut(1).unwrap().push(DtEnd::new(end));
                 match el[1].code {
-                    untis::LessonCode::Regular => (),
+                    untis::LessonCode::Regular => {
+                        if let Some(el) = levents.get_mut(1) {
+                            el.push(Status::tentative())
+                        }
+                    }
                     untis::LessonCode::Irregular => (),
                     untis::LessonCode::Cancelled => {
-                        levents.get_mut(1).unwrap().push(Status::cancelled())
+                        if let Some(el) = levents.get_mut(1) {
+                            el.push(Status::cancelled())
+                        }
                     }
                 };
             } else {
@@ -225,7 +237,9 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                 levents.get_mut(0).unwrap().push(DtEnd::new(end));
 
                 match el[0].code {
-                    untis::LessonCode::Regular => (),
+                    untis::LessonCode::Regular => levents
+                        .iter_mut()
+                        .for_each(|ev| ev.push(Status::tentative())),
                     untis::LessonCode::Irregular => (),
                     untis::LessonCode::Cancelled => levents
                         .iter_mut()
