@@ -208,7 +208,7 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                 match el[0].code {
                     untis::LessonCode::Regular => {
                         if let Some(el) = levents.get_mut(0) {
-                            el.push(Status::tentative())
+                            el.push(Status::confirmed())
                         }
                     }
                     untis::LessonCode::Irregular => (),
@@ -224,7 +224,7 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                 match el[1].code {
                     untis::LessonCode::Regular => {
                         if let Some(el) = levents.get_mut(1) {
-                            el.push(Status::tentative())
+                            el.push(Status::confirmed())
                         }
                     }
                     untis::LessonCode::Irregular => (),
@@ -242,7 +242,7 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                 match el[0].code {
                     untis::LessonCode::Regular => levents
                         .iter_mut()
-                        .for_each(|ev| ev.push(Status::tentative())),
+                        .for_each(|ev| ev.push(Status::confirmed())),
                     untis::LessonCode::Irregular => (),
                     untis::LessonCode::Cancelled => levents
                         .iter_mut()
