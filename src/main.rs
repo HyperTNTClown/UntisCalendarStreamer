@@ -111,8 +111,21 @@ fn fetch() -> Result<FetchResult, untis::Error> {
             }
         });
         sorted_timetable.into_iter().map(|el| el.1).for_each(|el| {
-            let double = el.len() == 2
-                && ((el[0].code != el[1].code) || (el[0].rooms[0].name != el[1].rooms[0].name));
+            let double = if el.len() == 2 {
+                (el[0].code != el[1].code)
+                    || (el[0]
+                        .rooms
+                        .get(0)
+                        .map(|e| e.name.to_string())
+                        .unwrap_or_default()
+                        != el[1]
+                            .rooms
+                            .get(0)
+                            .map(|e| e.name.to_string())
+                            .unwrap_or_default())
+            } else {
+                false
+            };
             let subject = {
                 let tmp = el[0]
                     .subjects
@@ -170,7 +183,11 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                         ev.push(ics::properties::Summary::new(format!(
                             "{} - {}",
                             subj.long_name,
-                            el[idx].rooms.first().unwrap().name
+                            el[idx]
+                                .rooms
+                                .first()
+                                .map(|e| e.name.to_string())
+                                .unwrap_or_default()
                         )))
                     });
                     levents.iter_mut().enumerate().for_each(|(idx, ev)| {
