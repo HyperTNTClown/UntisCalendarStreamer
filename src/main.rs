@@ -191,13 +191,13 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                         )))
                     });
                     levents.iter_mut().enumerate().for_each(|(idx, ev)| {
-                        ev.push(ics::properties::Description::new(
-                            el[idx]
-                                .subjects
-                                .first()
-                                .map(|el| el.name.clone())
-                                .unwrap_or_default(),
-                        ))
+                        let suid = el[idx]
+                            .subjects
+                            .first()
+                            .map(|el| el.name.clone())
+                            .unwrap_or_default();
+                        let description_string = suid;
+                        ev.push(ics::properties::Description::new(description_string))
                     });
                 }
                 None => {
