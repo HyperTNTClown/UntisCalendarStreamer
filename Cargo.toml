@@ -7,7 +7,7 @@ edition = "2021"
 name = "untis_httpapi"
 
 [dependencies]
-untis = { git = "https://github.com/HyperTNTClown/untis-rs.git" }
+untis = "0.3.0"
 chrono = "0.4"
 ics = "0.5.8"
 hyper = { version = "1.4.1", features = ["full"] }
