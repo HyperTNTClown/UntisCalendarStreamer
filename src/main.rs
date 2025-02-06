@@ -1,9 +1,12 @@
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
+    fs::File,
     future::Future,
+    io::Read,
     net::SocketAddr,
     pin::Pin,
+    sync::LazyLock,
     thread::{self, sleep},
     time::Duration,
 };
@@ -25,6 +28,21 @@ use log::{debug, info};
 use simplelog::Config;
 use tokio::net::TcpListener;
 use untis::{Date, Lesson, Time};
+
+static ALIAS: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
+    let path = "./alias";
+    let mut buf = String::new();
+    File::create_new(path).ok();
+    File::open(path).unwrap().read_to_string(&mut buf).unwrap();
+
+    buf.split("\n")
+        .filter_map(|el| {
+            el.find(";")
+                .map(|i| el.split_at(i))
+                .map(|f| (f.0.to_owned(), f.1.strip_prefix(";").unwrap().to_owned()))
+        })
+        .collect::<HashMap<String, String>>()
+});
 
 #[derive(Clone)]
 struct Svc {
@@ -115,12 +133,12 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                 (el[0].code != el[1].code)
                     || (el[0]
                         .rooms
-                        .get(0)
+                        .first()
                         .map(|e| e.name.to_string())
                         .unwrap_or_default()
                         != el[1]
                             .rooms
-                            .get(0)
+                            .first()
                             .map(|e| e.name.to_string())
                             .unwrap_or_default())
             } else {
@@ -170,19 +188,17 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                 levents.push(event);
             }
 
-            match subjects.iter().find(|sub| {
-                sub.name
-                    == el[0]
-                        .subjects
-                        .first()
-                        .map(|el| el.name.clone())
-                        .unwrap_or_default()
-            }) {
+            match subjects.iter().find(|sub| sub.name == subject) {
                 Some(subj) => {
+                    let name = if let Some(alias) = ALIAS.get_key_value(&subject) {
+                        alias.1.to_owned()
+                    } else {
+                        subj.long_name.to_owned()
+                    };
                     levents.iter_mut().enumerate().for_each(|(idx, ev)| {
                         ev.push(ics::properties::Summary::new(format!(
                             "{} - {}",
-                            subj.long_name,
+                            name,
                             el[idx]
                                 .rooms
                                 .first()
@@ -201,14 +217,15 @@ fn fetch() -> Result<FetchResult, untis::Error> {
                     });
                 }
                 None => {
+                    let name = if let Some(alias) = ALIAS.get_key_value(&subject) {
+                        alias.1.to_owned()
+                    } else {
+                        subject.to_owned()
+                    };
                     levents.iter_mut().enumerate().for_each(|(idx, ev)| {
                         ev.push(ics::properties::Summary::new(format!(
                             "{}-{}",
-                            el[idx]
-                                .subjects
-                                .first()
-                                .map(|el| el.name.clone())
-                                .unwrap_or_default(),
+                            name,
                             el[idx]
                                 .rooms
                                 .first()
