@@ -12,8 +12,8 @@ pub struct Root {
 #[serde(rename_all = "camelCase")]
 pub struct CalendarEntry {
     pub id: i64,
-    pub previous_id: i64,
-    pub next_id: i64,
+    pub previous_id: Option<i64>,
+    pub next_id: Option<i64>,
     pub absence_reason_id: Value,
     pub booking: Value,
     pub color: String,
@@ -99,8 +99,8 @@ pub struct Room {
 #[serde(rename_all = "camelCase")]
 pub struct SingleEntry {
     pub id: i64,
-    pub previous_id: i64,
-    pub next_id: i64,
+    pub previous_id: Option<i64>,
+    pub next_id: Option<i64>,
     pub created_at: Value,
     pub end_date_time: String,
     pub last_update: Value,
