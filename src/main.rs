@@ -1,4 +1,7 @@
 mod definitions;
+mod homework;
+mod hw_definitions;
+
 use std::{
     collections::HashMap,
     fmt::Display,
@@ -16,6 +19,7 @@ use arcshift::ArcShift;
 use bytes::Bytes;
 use chrono::{format, Days, Duration, Local, NaiveDate, Weekday};
 use definitions::{GridEntry, Root};
+use homework::fetch_homework;
 use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
 use hyper::{
     body::Incoming, header::HeaderValue, server::conn::http1, service::Service, Method, Request,
@@ -92,7 +96,7 @@ fn fetch_task(mut arc: ArcShift<TimeTableData>) -> ! {
 }
 
 #[tokio::main]
-async fn main() {
+async fn _main() {
     dotenv::dotenv().ok();
     let addr = SocketAddr::from(([0, 0, 0, 0], 3022));
     let listener = TcpListener::bind(addr).await.unwrap();
@@ -140,6 +144,9 @@ fn get_data() -> TimeTableData {
         };
     }
 
+    let fetched_homework = fetch_homework();
+
+    data.tasks = fetched_homework;
     data
 }
 
@@ -169,8 +176,9 @@ fn grid_entry_to_event(entry: GridEntry) -> Event<'static> {
     event
 }
 
-fn create_timestamp(stamp: &str) -> String {
-    let time = chrono::NaiveDateTime::parse_from_str(&stamp, "%Y-%m-%dT%H:%M")
+pub fn create_timestamp(stamp: &str) -> String {
+    let time = chrono::NaiveDateTime::parse_and_remainder(&stamp, "%Y-%m-%dT%H:%M")
+        .map(|el| el.0)
         .unwrap()
         .and_local_timezone(Local)
         .unwrap()
