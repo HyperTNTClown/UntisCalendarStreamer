@@ -1,4 +1,5 @@
 mod definitions;
+mod fetch;
 mod homework;
 mod hw_definitions;
 
@@ -19,6 +20,7 @@ use arcshift::ArcShift;
 use bytes::Bytes;
 use chrono::{format, Days, Duration, Local, NaiveDate, Weekday};
 use definitions::{GridEntry, Root};
+use fetch::fetch;
 use homework::fetch_homework;
 use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
 use hyper::{
@@ -90,10 +92,15 @@ impl Display for TimeTableData {
 
 fn fetch_task(mut arc: ArcShift<TimeTableData>) -> ! {
     loop {
-        arc.update(get_data());
+        arc.update(fetch());
         sleep(std::time::Duration::from_secs(300));
     }
 }
+
+// fn main() {
+//     dotenv::dotenv().ok();
+//     fetch::fetch();
+// }
 
 #[tokio::main]
 async fn main() {
@@ -121,103 +128,14 @@ async fn main() {
     }
 }
 
-fn get_data() -> TimeTableData {
-    let fetched_root = fetch_data();
-    let grid_entries = fetched_root
-        .days
-        .into_iter()
-        .filter_map(|el| el.grid_entries)
-        .flatten()
-        .collect::<Vec<_>>();
-    let mut data = TimeTableData::default();
-    for grid_entry in grid_entries {
-        let subject = grid_entry.subject.as_ref().unwrap()[0]
-            .current
-            .short_name
-            .clone();
-        let event = grid_entry_to_event(grid_entry);
-        match data.blocks.get_mut(&subject) {
-            Some(vec) => vec.push(event),
-            None => {
-                data.blocks.insert(subject, vec![event]);
-            }
-        };
-    }
-
-    let fetched_homework = fetch_homework();
-
-    data.tasks = fetched_homework;
-    data
-}
-
-fn grid_entry_to_event(entry: GridEntry) -> Event<'static> {
-    let uid: i64 = entry.ids.map(|e| e.iter().sum()).unwrap();
-    let uid = format!("{}{}{}", entry.duration.start, uid, entry.duration.end)
-        .chars()
-        .filter(|d| d.is_ascii_digit())
-        .collect::<String>();
-    let stamp = chrono::Local::now().format("%Y%m%dT%H%M%S").to_string();
-    let mut event = Event::new(uid, stamp);
-    let summary = format!(
-        "{} - {}",
-        entry
-            .subject
-            .map(|el| el[0].current.long_name.clone())
-            .unwrap_or_default(),
-        entry
-            .room
-            .map(|el| el[0].current.short_name.clone())
-            .unwrap_or_default()
-    );
-    event.push(Summary::new(summary));
-    event.push(DtStart::new(create_timestamp(&entry.duration.start)));
-    event.push(DtEnd::new(create_timestamp(&entry.duration.end)));
-
-    event
-}
-
 pub fn create_timestamp(stamp: &str) -> String {
-    let time = chrono::NaiveDateTime::parse_and_remainder(&stamp, "%Y-%m-%dT%H:%M")
+    let time = chrono::NaiveDateTime::parse_and_remainder(stamp, "%Y-%m-%dT%H:%M")
         .map(|el| el.0)
         .unwrap()
         .and_local_timezone(Local)
         .unwrap()
         .to_utc();
     time.format("%Y%m%dT%H%M%SZ").to_string()
-}
-
-fn fetch_data() -> Root {
-    let (token, mandatory_cookies) = login();
-
-    let client = reqwest::blocking::Client::new();
-
-    let mut q_params: HashMap<&str, &str> = HashMap::new();
-    let s_date = chrono::Local::now()
-        .date_naive()
-        .week(Weekday::Mon)
-        .first_day();
-    let start = s_date.to_string();
-    q_params.insert("start", &start);
-    let e_date = s_date.checked_add_days(Days::new(11)).unwrap();
-    let end = e_date.to_string();
-    q_params.insert("end", &end);
-    q_params.insert("format", "4");
-    q_params.insert("resourceType", "CLASS");
-    q_params.insert("resources", "1708");
-    q_params.insert("timetableType", "STANDARD");
-
-    println!("{q_params:?}");
-
-    let res = client
-        .get("https://nessa.webuntis.com/WebUntis/api/rest/view/v1/timetable/entries")
-        .bearer_auth(token)
-        .header("Cookie", &mandatory_cookies)
-        .query(&q_params)
-        .send()
-        .unwrap();
-
-    let data = res.json::<Root>();
-    data.unwrap()
 }
 
 pub fn login() -> (String, String) {

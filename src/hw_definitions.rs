@@ -23,7 +23,7 @@ pub struct CalendarEntry {
     pub klasses: Vec<Klass>,
     pub lesson: Lesson,
     pub lesson_info: Value,
-    pub main_student_group: MainStudentGroup,
+    pub main_student_group: Option<MainStudentGroup>,
     pub notes_all: Value,
     pub notes_all_files: Vec<Value>,
     pub notes_staff: Value,
@@ -34,18 +34,37 @@ pub struct CalendarEntry {
     pub rooms: Vec<Room>,
     pub single_entries: Vec<SingleEntry>,
     pub start_date_time: String,
-    pub status: String,
+    pub status: Status,
     pub students: Vec<Value>,
-    pub sub_type: SubType,
+    pub sub_type: Option<SubType>,
     pub subject: Subject,
     pub subst_text: Value,
     pub teachers: Vec<Teacher>,
     pub teaching_content: Option<String>,
     pub teaching_content_files: Vec<Value>,
     #[serde(rename = "type")]
-    pub type_field: String,
+    pub type_field: Type,
     pub video_call: Value,
     pub integrations_section: Vec<Value>,
+}
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Status {
+    #[default]
+    #[serde(rename = "TAKING_PLACE")]
+    TakingPlace,
+    #[serde(rename = "CANCELLED")]
+    Cancelled,
+    #[serde(rename = "MOVED")]
+    Moved,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Type {
+    #[default]
+    #[serde(rename = "NORMAL_TEACHING_PERIOD")]
+    NormalTeachingPeriod,
+    #[serde(rename = "ADDITIONAL_PERIOD")]
+    AddiotionalPeriod,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
