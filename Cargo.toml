@@ -1,0 +1,25 @@
+[package]
+name = "new_untis"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arcshift = "0.1.10"
+bytes = "1.10.0"
+chrono = "0.4.39"
+cookie = { version = "0.18.1", features = ["signed", "private", "secure"] }
+dotenv = "0.15.0"
+http-body-util = "0.1.2"
+hyper = { version = "1.6.0", features = ["full"] }
+hyper-rustls = "0.27.5"
+hyper-util = { version = "0.1.10", features = ["full"] }
+ics = "0.5.8"
+log = "0.4.26"
+reqwest = { version = "0.12.12", features = ["blocking", "cookies", "json"] }
+serde = { version = "1.0.218", features = ["derive"] }
+serde_derive = "1.0.218"
+serde_json = "1.0.139"
+simplelog = "0.12.2"
+tokio = { version = "1.43.0", features = ["full"] }
+uid = "0.1.8"
+uuid = "1.15.0"
