@@ -96,7 +96,7 @@ fn fetch_task(mut arc: ArcShift<TimeTableData>) -> ! {
 }
 
 #[tokio::main]
-async fn _main() {
+async fn main() {
     dotenv::dotenv().ok();
     let addr = SocketAddr::from(([0, 0, 0, 0], 3022));
     let listener = TcpListener::bind(addr).await.unwrap();
