@@ -70,7 +70,7 @@ fn create_event_string_tuple(entry: CalendarEntry) -> (String, Vec<Event<'static
         .map(|el| {
             let dtstamp = create_timestamp(&el.date_time);
             let mut task = Event::new(el.id.to_string(), dtstamp);
-            let stamp = create_timestamp(&el.due_date_time);
+            let stamp = el.due_date_time.split("T").next().unwrap().replace("-", "");
             task.push(DtStart::new(stamp.clone()));
             task.push(DtEnd::new(stamp.clone()));
             task.push(Summary::new(format!("🏠 {}", subject.clone())));
