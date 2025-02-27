@@ -141,7 +141,11 @@ fn generate_description(entry: &CalendarEntry) -> ics::properties::Description<'
         .map(|el| el.long_name.clone())
         .unwrap_or_default();
 
-    let teaching_content = entry.teaching_content.clone().unwrap_or_default();
+    let teaching_content = entry
+        .teaching_content
+        .clone()
+        .unwrap_or_default()
+        .replace("\n", "\\n");
 
     ics::properties::Description::new(format!(
         "{} {} \\n{}",
