@@ -1,7 +1,5 @@
 mod definitions;
 mod fetch;
-mod homework;
-mod hw_definitions;
 
 use std::{
     collections::HashMap,
@@ -11,26 +9,20 @@ use std::{
     io::Read,
     net::SocketAddr,
     pin::Pin,
-    str::FromStr,
     sync::{Arc, LazyLock},
-    thread::{self, sleep},
+    thread::sleep,
 };
 
 use arcshift::ArcShift;
 use bytes::Bytes;
-use chrono::{format, Days, Duration, Local, NaiveDate, Weekday};
-use definitions::{GridEntry, Root};
+use chrono::Local;
 use fetch::fetch;
-use homework::fetch_homework;
 use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
 use hyper::{
     body::Incoming, header::HeaderValue, server::conn::http1, service::Service, Method, Request,
 };
 use hyper_util::rt::TokioIo;
-use ics::{
-    properties::{DtEnd, DtStart, Summary},
-    Event, ICalendar,
-};
+use ics::{Event, ICalendar};
 use log::debug;
 use reqwest::{
     blocking::Response,
@@ -42,7 +34,7 @@ use tokio::net::TcpListener;
 const SCHOOL_SPECIFIC_COOKIES: &str =
     "schoolname=\"_Z3ltbmFzaXVtIGFtIG1hcmt0\"; Tenant-Id=\"5761300\";";
 
-static ALIAS: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
+pub static ALIAS: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
     let path = "./alias";
     let mut buf = String::new();
     File::create_new(path).ok();
@@ -72,7 +64,6 @@ impl Svc {
 
 #[derive(Default)]
 struct TimeTableData {
-    timestamp: i64,
     blocks: HashMap<String, Vec<Event<'static>>>,
     tasks: HashMap<String, Vec<Event<'static>>>,
 }

@@ -1,10 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::{
-    format::{self, format},
-    naive::NaiveDateDaysIterator,
-    Days, Local, NaiveDate, NaiveTime,
-};
+use chrono::{Days, Local, NaiveDate, NaiveTime};
 use ics::{
     properties::{Description, DtEnd, DtStart, Summary},
     Event,
@@ -13,8 +9,8 @@ use reqwest::blocking::{Client, RequestBuilder};
 
 use crate::{
     create_timestamp,
-    hw_definitions::{CalendarEntry, Root},
-    login, TimeTableData,
+    definitions::{CalendarEntry, Root, Status},
+    login, TimeTableData, ALIAS,
 };
 
 const NEGATIVE_OFFSET: u64 = 14;
@@ -126,9 +122,8 @@ fn create_block_event(entry: CalendarEntry) -> (String, Event<'static>) {
     let mut ev = Event::new(id, dtstamp);
 
     let status = match entry.status {
-        crate::hw_definitions::Status::TakingPlace => ics::properties::Status::confirmed(),
-        crate::hw_definitions::Status::Cancelled => ics::properties::Status::cancelled(),
-        crate::hw_definitions::Status::Moved => ics::properties::Status::confirmed(),
+        Status::Cancelled => ics::properties::Status::cancelled(),
+        _ => ics::properties::Status::confirmed(),
     };
     ev.push(status);
     ev.push(generate_summary(entry.clone()));
@@ -136,28 +131,25 @@ fn create_block_event(entry: CalendarEntry) -> (String, Event<'static>) {
     (entry.subject.display_name, ev.clone())
 }
 
-//TODO: Implement the Alias System Again
 fn generate_summary(entry: CalendarEntry) -> ics::properties::Summary<'static> {
-    ics::properties::Summary::new(match entry.type_field {
-        crate::hw_definitions::Type::NormalTeachingPeriod => format!(
-            "{} - {}",
-            entry.subject.long_name,
-            entry
-                .rooms
-                .first()
-                .map(|el| el.display_name.clone())
-                .unwrap_or_default()
-        ),
-        crate::hw_definitions::Type::AddiotionalPeriod => format!(
-            "➕ {} - {}",
-            entry.subject.long_name,
-            entry
-                .rooms
-                .first()
-                .map(|el| el.display_name.clone())
-                .unwrap_or_default()
-        ),
-    })
+    let name = ALIAS
+        .get_key_value(&entry.subject.display_name)
+        .map(|(_, val)| val.clone())
+        .unwrap_or(entry.subject.long_name);
+    let room = entry
+        .rooms
+        .into_iter()
+        .find(|el| el.status != Status::Removed)
+        .unwrap();
+
+    let mut sum = format!("{} - {}", name, room.display_name);
+    if room.status == Status::Substitution {
+        sum = "🔄 ".to_owned() + &sum;
+    }
+    if entry.type_field == crate::definitions::Type::AddiotionalPeriod {
+        sum = "➕ ".to_owned() + &sum;
+    }
+    ics::properties::Summary::new(sum)
 }
 
 fn add_timestamps(event: &mut Event<'_>, entry: &CalendarEntry) {
