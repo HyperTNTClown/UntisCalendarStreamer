@@ -127,8 +127,26 @@ fn create_block_event(entry: CalendarEntry) -> (String, Event<'static>) {
     };
     ev.push(status);
     ev.push(generate_summary(entry.clone()));
+    ev.push(generate_description(&entry));
     add_timestamps(&mut ev, &entry);
     (entry.subject.display_name, ev.clone())
+}
+
+fn generate_description(entry: &CalendarEntry) -> ics::properties::Description<'static> {
+    let class_code = entry.subject.display_name.clone();
+    let teacher_name = entry
+        .teachers
+        .iter()
+        .find(|el| el.status != Status::Removed)
+        .map(|el| el.long_name.clone())
+        .unwrap_or_default();
+
+    let teaching_content = entry.teaching_content.clone().unwrap_or_default();
+
+    ics::properties::Description::new(format!(
+        "{} {} \\n{}",
+        class_code, teacher_name, teaching_content
+    ))
 }
 
 fn generate_summary(entry: CalendarEntry) -> ics::properties::Summary<'static> {

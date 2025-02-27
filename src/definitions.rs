@@ -162,6 +162,6 @@ pub struct Teacher {
     pub id: i64,
     pub long_name: String,
     pub short_name: String,
-    pub status: String,
+    pub status: Status,
     pub image_url: Value,
 }
