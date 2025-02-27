@@ -2,7 +2,7 @@ mod definitions;
 mod fetch;
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::Display,
     fs::File,
     future::Future,
@@ -65,7 +65,7 @@ impl Svc {
 #[derive(Default)]
 struct TimeTableData {
     blocks: HashMap<String, Vec<Event<'static>>>,
-    tasks: HashMap<String, Vec<Event<'static>>>,
+    tasks: HashMap<String, HashSet<Event<'static>>>,
 }
 
 impl Display for TimeTableData {

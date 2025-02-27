@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{Days, Local, NaiveDate, NaiveTime};
 use ics::{
@@ -50,9 +50,9 @@ fn combine_ttd(mut ttd1: TimeTableData, ttd2: TimeTableData) -> TimeTableData {
             }
         }
     }
-    for (subj, mut v) in ttd2.tasks {
+    for (subj, v) in ttd2.tasks {
         match ttd1.tasks.get_mut(&subj) {
-            Some(vec) => vec.append(&mut v),
+            Some(set) => set.extend(v.into_iter()),
             None => {
                 ttd1.tasks.insert(subj, v);
             }
@@ -93,7 +93,7 @@ fn fetch_for_day(day: NaiveDate, req_builder: RequestBuilder) -> TimeTableData {
     ttd
 }
 
-fn create_hw_events(entry: &CalendarEntry) -> Option<(String, Vec<Event<'static>>)> {
+fn create_hw_events(entry: &CalendarEntry) -> Option<(String, HashSet<Event<'static>>)> {
     if entry.homeworks.is_empty() {
         return None;
     };
@@ -111,7 +111,7 @@ fn create_hw_events(entry: &CalendarEntry) -> Option<(String, Vec<Event<'static>
             task.push(Description::new(el.text.replace("\n", "\\n")));
             task
         })
-        .collect::<Vec<_>>();
+        .collect::<HashSet<_>>();
 
     Some((subject, hw))
 }
