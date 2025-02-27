@@ -140,7 +140,7 @@ fn generate_summary(entry: CalendarEntry) -> ics::properties::Summary<'static> {
         .rooms
         .into_iter()
         .find(|el| el.status != Status::Removed)
-        .unwrap();
+        .unwrap_or_default();
 
     let mut sum = format!("{} - {}", name, room.display_name);
     if room.status == Status::Substitution {
