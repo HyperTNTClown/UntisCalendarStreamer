@@ -256,7 +256,8 @@ impl Service<Request<Incoming>> for Svc {
                 req.uri().query().unwrap().split(',').for_each(|el| {
                     add_to_calendar(&mut calendar, &self.data, el);
                 });
-                let res = hyper::http::response::Response::new(full(calendar.to_string()));
+                let cal_string = calendar.to_string().replace(",", "\\,").replace(";", "\\;");
+                let res = hyper::http::response::Response::new(full(cal_string));
                 let (mut parts, body) = res.into_parts();
                 parts
                     .headers
