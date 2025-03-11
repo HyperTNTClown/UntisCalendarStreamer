@@ -128,8 +128,13 @@ fn create_block_event(entry: CalendarEntry) -> (String, Event<'static>) {
     ev.push(status);
     ev.push(generate_summary(entry.clone()));
     ev.push(generate_description(&entry));
+    ev.push(location());
     add_timestamps(&mut ev, &entry);
     (entry.subject.display_name, ev.clone())
+}
+
+fn location() -> ics::properties::Location<'static> {
+    ics::properties::Location::new("Am Marktplatz 18, 28832 Achim, Deutschland")
 }
 
 fn generate_description(entry: &CalendarEntry) -> ics::properties::Description<'static> {
