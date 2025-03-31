@@ -23,7 +23,7 @@ use hyper::{
 };
 use hyper_util::rt::TokioIo;
 use ics::{Event, ICalendar};
-use log::debug;
+use log::{debug, error};
 use reqwest::{
     blocking::Response,
     cookie::{CookieStore, Jar},
@@ -83,7 +83,11 @@ impl Display for TimeTableData {
 
 fn fetch_task(mut arc: ArcShift<TimeTableData>) -> ! {
     loop {
-        arc.update(fetch());
+        if let Some(data) = fetch() {
+            arc.update(data)
+        } else {
+            error!("Irgendwas ist beim holen der Daten schiefgelaufen, probiere es in 5 Minuten nochmal")
+        }
         sleep(std::time::Duration::from_secs(300));
     }
 }
@@ -119,17 +123,17 @@ async fn main() {
     }
 }
 
-pub fn create_timestamp(stamp: &str) -> String {
+pub fn create_timestamp(stamp: &str) -> Option<String> {
     let time = chrono::NaiveDateTime::parse_and_remainder(stamp, "%Y-%m-%dT%H:%M")
         .map(|el| el.0)
-        .unwrap()
+        .ok()?
         .and_local_timezone(Local)
-        .unwrap()
+        .earliest()?
         .to_utc();
-    time.format("%Y%m%dT%H%M%SZ").to_string()
+    Some(time.format("%Y%m%dT%H%M%SZ").to_string())
 }
 
-pub fn login() -> (String, String) {
+pub fn login() -> Option<(String, String)> {
     let mut untis_cookies = String::from(SCHOOL_SPECIFIC_COOKIES);
 
     let url = "https://nessa.webuntis.com/WebUntis/oidc/login";
@@ -138,52 +142,46 @@ pub fn login() -> (String, String) {
         .cookie_store(true)
         .cookie_provider(cookie_jar.clone())
         .build()
-        .unwrap();
+        .ok()?;
     let res = client
         .get(url)
         .header("Cookie", &untis_cookies)
         .send()
-        .unwrap();
+        .ok()?;
     let redirect_url = res.url().clone();
-    let res = client.get(redirect_url).send().unwrap();
+    let res = client.get(redirect_url).send().ok()?;
     let login_url = res.url().clone();
     let mut params = HashMap::new();
-    let (_, username) = std::env::vars().find(|(k, _)| k == "USERNAME").unwrap();
+    let (_, username) = std::env::vars().find(|(k, _)| k == "USERNAME")?;
     params.insert("_username", username);
-    let (_, password) = std::env::vars().find(|(k, _)| k == "PASSWORD").unwrap();
+    let (_, password) = std::env::vars().find(|(k, _)| k == "PASSWORD")?;
     params.insert("_password", password);
-    let res = client.post(login_url).form(&params).send().unwrap();
-    let text = res.text().unwrap();
-    let redirect = text
-        .split(";url=")
-        .nth(1)
-        .unwrap()
-        .split("\">")
-        .next()
-        .unwrap();
-    let res = client.get(redirect).send().unwrap();
+    let res = client.post(login_url).form(&params).send().ok()?;
+    let text = res.text().ok()?;
+    let redirect = text.split(";url=").nth(1)?.split("\">").next()?;
+    let res = client.get(redirect).send().ok()?;
     let params = construct_oauth_params(res);
     let res = client
         .post("https://gamma-achim.de/iserv/oauth/v2/auth")
         .form(&params)
         .send()
-        .unwrap();
+        .ok()?;
 
     println!("{res:?}");
 
     let res = client
         .get("https://nessa.webuntis.com/WebUntis/api/token/new")
         .send()
-        .unwrap();
+        .ok()?;
 
-    let token = res.text().unwrap();
+    let token = res.text().ok()?;
     println!("{token}");
-    let url = Url::parse("https://nessa.webuntis.com/WebUntis").unwrap();
-    let needed_cookies = cookie_jar.cookies(&url).unwrap();
+    let url = Url::parse("https://nessa.webuntis.com/WebUntis").ok()?;
+    let needed_cookies = cookie_jar.cookies(&url)?;
     println!("{needed_cookies:?}");
-    untis_cookies.push_str(needed_cookies.to_str().unwrap());
+    untis_cookies.push_str(needed_cookies.to_str().ok()?);
 
-    (token, untis_cookies)
+    Some((token, untis_cookies))
 }
 
 fn construct_oauth_params(res: Response) -> HashMap<&'static str, &'static str> {

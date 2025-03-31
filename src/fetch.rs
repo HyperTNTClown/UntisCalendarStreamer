@@ -16,13 +16,13 @@ use crate::{
 const NEGATIVE_OFFSET: u64 = 14;
 const POSITIVE_OFFSET: usize = 35;
 
-pub fn fetch() -> TimeTableData {
-    let (token, cookies) = login();
+pub fn fetch() -> Option<TimeTableData> {
+    let (token, cookies) = login()?;
     let client = Client::new();
     let req_builder = client
         .get("https://nessa.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail")
-        .bearer_auth(token)
-        .header("Cookie", cookies);
+        .bearer_auth(token.clone())
+        .header("Cookie", cookies.clone());
 
     let starting_day = Local::now()
         .date_naive()
@@ -30,15 +30,15 @@ pub fn fetch() -> TimeTableData {
         .first_day()
         - Days::new(NEGATIVE_OFFSET);
 
-    starting_day
+    Some(starting_day
         .iter_days()
         .take(NEGATIVE_OFFSET as usize + POSITIVE_OFFSET)
-        .map(|day| {
-            let req = req_builder.try_clone().unwrap();
+        .filter_map(|day| {
+            let req = req_builder.try_clone().unwrap_or_else(|| client.get("https://nessa.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail").bearer_auth(token.clone()).header("Cookie", cookies.clone()));
             fetch_for_day(day, req)
         })
         .reduce(combine_ttd)
-        .unwrap()
+        .unwrap_or_default())
 }
 
 fn combine_ttd(mut ttd1: TimeTableData, ttd2: TimeTableData) -> TimeTableData {
@@ -62,16 +62,16 @@ fn combine_ttd(mut ttd1: TimeTableData, ttd2: TimeTableData) -> TimeTableData {
     ttd1
 }
 
-fn fetch_for_day(day: NaiveDate, req_builder: RequestBuilder) -> TimeTableData {
+fn fetch_for_day(day: NaiveDate, req_builder: RequestBuilder) -> Option<TimeTableData> {
     let mut ttd = TimeTableData::default();
 
     let res = req_builder
         .query(&generate_params_for_date(day))
         .send()
-        .unwrap();
+        .ok()?;
     println!("{:?}", res);
 
-    let data = res.json::<Root>().unwrap();
+    let data = res.json::<Root>().unwrap_or_default();
 
     ttd.tasks = data
         .calendar_entries
@@ -90,7 +90,7 @@ fn fetch_for_day(day: NaiveDate, req_builder: RequestBuilder) -> TimeTableData {
         }
     });
 
-    ttd
+    Some(ttd)
 }
 
 fn create_hw_events(entry: &CalendarEntry) -> Option<(String, HashSet<Event<'static>>)> {
@@ -102,9 +102,14 @@ fn create_hw_events(entry: &CalendarEntry) -> Option<(String, HashSet<Event<'sta
         .homeworks
         .iter()
         .map(|el| {
-            let dtstamp = create_timestamp(&el.date_time);
+            let dtstamp = create_timestamp(&el.date_time).unwrap_or_default();
             let mut task = Event::new(el.id.to_string(), dtstamp);
-            let stamp = el.due_date_time.split("T").next().unwrap().replace("-", "");
+            let stamp = el
+                .due_date_time
+                .split("T")
+                .next()
+                .unwrap_or_default()
+                .replace("-", "");
             task.push(DtStart::new(stamp.clone()));
             task.push(DtEnd::new(stamp.clone()));
             task.push(Summary::new(format!("🏠 {}", subject.clone())));
@@ -180,8 +185,12 @@ fn generate_summary(entry: CalendarEntry) -> ics::properties::Summary<'static> {
 }
 
 fn add_timestamps(event: &mut Event<'_>, entry: &CalendarEntry) {
-    event.push(DtStart::new(create_timestamp(&entry.start_date_time)));
-    event.push(DtEnd::new(create_timestamp(&entry.end_date_time)));
+    event.push(DtStart::new(
+        create_timestamp(&entry.start_date_time).unwrap_or_default(),
+    ));
+    event.push(DtEnd::new(
+        create_timestamp(&entry.end_date_time).unwrap_or_default(),
+    ));
 }
 
 fn generate_params_for_date(date: NaiveDate) -> HashMap<String, String> {
