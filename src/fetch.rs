@@ -14,7 +14,7 @@ use crate::{
 };
 
 const NEGATIVE_OFFSET: u64 = 14;
-const POSITIVE_OFFSET: usize = 35;
+const POSITIVE_OFFSET: usize = 56;
 
 pub fn fetch() -> Option<TimeTableData> {
     let (token, cookies) = login()?;
@@ -133,13 +133,18 @@ fn create_block_event(entry: CalendarEntry) -> (String, Event<'static>) {
     ev.push(status);
     ev.push(generate_summary(entry.clone()));
     ev.push(generate_description(&entry));
-    ev.push(location());
+    ev.push(location(&entry));
     add_timestamps(&mut ev, &entry);
     (entry.subject.display_name, ev.clone())
 }
 
-fn location() -> ics::properties::Location<'static> {
-    ics::properties::Location::new("Am Marktplatz 18, 28832 Achim, Deutschland")
+fn location(entry: &CalendarEntry) -> ics::properties::Location<'static> {
+    let l_alias = "l".to_owned() + &entry.subject.display_name.to_owned();
+    let location = ALIAS
+        .get_key_value(&l_alias)
+        .map(|(_, val)| val.clone())
+        .unwrap_or("Am Marktplatz 18, 28832 Achim, Deutschland".to_owned());
+    ics::properties::Location::new(location)
 }
 
 fn generate_description(entry: &CalendarEntry) -> ics::properties::Description<'static> {
