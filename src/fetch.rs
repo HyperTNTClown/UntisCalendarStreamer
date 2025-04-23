@@ -14,7 +14,7 @@ use crate::{
 };
 
 const NEGATIVE_OFFSET: u64 = 14;
-const POSITIVE_OFFSET: usize = 56;
+const POSITIVE_OFFSET: usize = 70;
 
 pub fn fetch() -> Option<TimeTableData> {
     let (token, cookies) = login()?;
