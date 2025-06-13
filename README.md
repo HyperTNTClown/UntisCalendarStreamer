@@ -72,8 +72,8 @@ Create a `.env` file in the root of the project with your credentials:
 
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/your-username/your-repo-name.git
-    cd your-repo-name
+    git clone https://github.com/HyperTNTClown/UntisCalendarStreamer.git
+    cd UntisCalendarStreamer
     ```
 
 2.  Run the application:
