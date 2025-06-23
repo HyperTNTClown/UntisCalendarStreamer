@@ -69,7 +69,7 @@ fn fetch_for_day(day: NaiveDate, req_builder: RequestBuilder) -> Option<TimeTabl
         .query(&generate_params_for_date(day))
         .send()
         .ok()?;
-    println!("{:?}", res);
+    // println!("{:?}", res);
 
     let data = res.json::<Root>().unwrap_or_default();
 
@@ -97,7 +97,10 @@ fn create_hw_events(entry: &CalendarEntry) -> Option<(String, HashSet<Event<'sta
     if entry.homeworks.is_empty() {
         return None;
     };
-    let subject = entry.subject.display_name.clone();
+    let subject = entry
+        .subject
+        .clone()
+        .map_or("default".to_owned(), |s| s.display_name.clone());
     let hw = entry
         .homeworks
         .iter()
@@ -135,11 +138,21 @@ fn create_block_event(entry: CalendarEntry) -> (String, Event<'static>) {
     ev.push(generate_description(&entry));
     ev.push(location(&entry));
     add_timestamps(&mut ev, &entry);
-    (entry.subject.display_name, ev.clone())
+    (
+        entry
+            .subject
+            .map_or("default".to_owned(), |s| s.display_name),
+        ev.clone(),
+    )
 }
 
 fn location(entry: &CalendarEntry) -> ics::properties::Location<'static> {
-    let l_alias = "l".to_owned() + &entry.subject.display_name.to_owned();
+    let l_alias = "l".to_owned()
+        + &entry
+            .subject
+            .clone()
+            .map_or("default".to_owned(), |s| s.display_name.to_owned())
+            .clone();
     let location = ALIAS
         .get_key_value(&l_alias)
         .map(|(_, val)| val.clone())
@@ -148,7 +161,10 @@ fn location(entry: &CalendarEntry) -> ics::properties::Location<'static> {
 }
 
 fn generate_description(entry: &CalendarEntry) -> ics::properties::Description<'static> {
-    let class_code = entry.subject.display_name.clone();
+    let class_code = entry
+        .subject
+        .clone()
+        .map_or("default".to_owned(), |s| s.display_name.clone());
     let teacher_name = entry
         .teachers
         .iter()
@@ -170,9 +186,19 @@ fn generate_description(entry: &CalendarEntry) -> ics::properties::Description<'
 
 fn generate_summary(entry: CalendarEntry) -> ics::properties::Summary<'static> {
     let name = ALIAS
-        .get_key_value(&entry.subject.display_name)
+        .get_key_value(
+            &entry
+                .subject
+                .clone()
+                .map_or("default".to_owned(), |s| s.display_name),
+        )
         .map(|(_, val)| val.clone())
-        .unwrap_or(entry.subject.long_name);
+        .unwrap_or(
+            entry
+                .subject
+                .clone()
+                .map_or("default".to_owned(), |s| s.long_name),
+        );
     let room = entry
         .rooms
         .into_iter()

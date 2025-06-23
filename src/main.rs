@@ -167,18 +167,14 @@ pub fn login() -> Option<(String, String)> {
         .send()
         .ok()?;
 
-    println!("{res:?}");
-
     let res = client
         .get("https://nessa.webuntis.com/WebUntis/api/token/new")
         .send()
         .ok()?;
 
     let token = res.text().ok()?;
-    println!("{token}");
     let url = Url::parse("https://nessa.webuntis.com/WebUntis").ok()?;
     let needed_cookies = cookie_jar.cookies(&url)?;
-    println!("{needed_cookies:?}");
     untis_cookies.push_str(needed_cookies.to_str().ok()?);
 
     Some((token, untis_cookies))
@@ -197,14 +193,16 @@ fn construct_oauth_params(res: Response) -> HashMap<&'static str, &'static str> 
         "iserv_oauth_server_authorize_form[redirect_uri]",
         "https://nessa.webuntis.com/WebUntis/oidc/callback",
     );
+    // TODO: decode URI Parts, as it might cause more problems in the future
     let state = url
         .split("state=")
         .nth(1)
         .unwrap()
         .split("&")
         .next()
-        .unwrap();
-    params.insert("iserv_oauth_server_authorize_form[state]", state);
+        .unwrap()
+        .replace("%3D", "=");
+    params.insert("iserv_oauth_server_authorize_form[state]", state.leak());
     params.insert(
         "iserv_oauth_server_authorize_form[scope]",
         "openid email iserv:webuntis",
@@ -231,7 +229,6 @@ fn construct_oauth_params(res: Response) -> HashMap<&'static str, &'static str> 
             .to_owned()
     };
     params.insert("iserv_oauth_server_authorize_form[_token]", token.leak());
-    println!("{params:?}");
     params
 }
 
