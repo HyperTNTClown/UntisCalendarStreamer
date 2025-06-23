@@ -100,7 +100,7 @@ fn create_hw_events(entry: &CalendarEntry) -> Option<(String, HashSet<Event<'sta
     let subject = entry
         .subject
         .clone()
-        .map_or("default".to_owned(), |s| s.display_name.clone());
+        .map_or("".to_owned(), |s| s.display_name.clone());
     let hw = entry
         .homeworks
         .iter()
@@ -164,7 +164,7 @@ fn generate_description(entry: &CalendarEntry) -> ics::properties::Description<'
     let class_code = entry
         .subject
         .clone()
-        .map_or("default".to_owned(), |s| s.display_name.clone());
+        .map_or("".to_owned(), |s| s.display_name.clone());
     let teacher_name = entry
         .teachers
         .iter()
@@ -190,15 +190,10 @@ fn generate_summary(entry: CalendarEntry) -> ics::properties::Summary<'static> {
             &entry
                 .subject
                 .clone()
-                .map_or("default".to_owned(), |s| s.display_name),
+                .map_or("".to_owned(), |s| s.display_name),
         )
         .map(|(_, val)| val.clone())
-        .unwrap_or(
-            entry
-                .subject
-                .clone()
-                .map_or("default".to_owned(), |s| s.long_name),
-        );
+        .unwrap_or(entry.subject.clone().map_or("".to_owned(), |s| s.long_name));
     let room = entry
         .rooms
         .into_iter()
