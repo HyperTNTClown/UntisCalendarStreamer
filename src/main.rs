@@ -189,9 +189,10 @@ fn construct_oauth_params(res: Response) -> HashMap<&'static str, &'static str> 
         "15_61zgj5ci0q4ows8swo80so0g4wkckgwsg40owkg4k8cc8cg04k",
     );
     params.insert("iserv_oauth_server_authorize_form[response_type]", "code");
+    // TODO: parse the URL, as it seems that it is prone to change
     params.insert(
         "iserv_oauth_server_authorize_form[redirect_uri]",
-        "https://nessa.webuntis.com/WebUntis/oidc/callback",
+        "https://oidc.webuntis.com/WebUntis/oidc/callback",
     );
     // TODO: decode URI Parts, as it might cause more problems in the future
     let state = url
