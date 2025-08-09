@@ -40,7 +40,7 @@ Key hard-coded values that would need to be changed include:
 *   **OAuth `client_id`:** Hard-coded in `fetch.rs`, though it could be modified to be parsed from the login page HTML.
 *   **Cookies:** The `schoolname` and `Tenant` cookies in `main.rs`, which must be copied after selecting the school in a browser.
 *   **API Parameters:** The `elementId` and `elementType` in `fetch.rs`'s `generate_params_for_date` function, which are specific to a logged-in user.
-*   **Physical Location:** The hard-coded school address in `location.rs`.
+*   **Physical Location:** The hard-coded school address in `fetch.rs`.
 
 ## Technical Stack
 
