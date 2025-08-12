@@ -244,7 +244,12 @@ impl Service<Request<Incoming>> for Svc {
         debug!("{req:?}");
         let res = match (req.method(), req.uri().path()) {
             (&Method::GET, "/") => {
-                hyper::http::response::Response::new(full("Ask marvin for help"))
+                let options = self
+                    .data
+                    .blocks
+                    .keys()
+                    .fold(String::new(), |acc, el| format!("{acc}\n{el}"));
+                hyper::http::response::Response::new(full(options))
             }
             (&Method::GET, "/ics") => {
                 let mut calendar = ICalendar::new("2.0", "ics-rs");
