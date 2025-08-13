@@ -8,6 +8,7 @@ arcshift = "0.1.10"
 bytes = "1.10.0"
 chrono = "0.4.39"
 cookie = { version = "0.18.1", features = ["signed", "private", "secure"] }
+dashmap = { version = "6.1.0", features = ["rayon"] }
 dotenv = "0.15.0"
 http-body-util = "0.1.2"
 hyper = { version = "1.6.0", features = ["full"] }

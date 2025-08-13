@@ -14,8 +14,9 @@ use std::{
 };
 
 use arcshift::ArcShift;
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use chrono::Local;
+use dashmap::DashMap;
 use fetch::fetch;
 use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
 use hyper::{
@@ -25,10 +26,10 @@ use hyper_util::rt::TokioIo;
 use ics::{Event, ICalendar};
 use log::{debug, error};
 use reqwest::{
-    blocking::Response,
     cookie::{CookieStore, Jar},
     Url,
 };
+use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 
 const SCHOOL_SPECIFIC_COOKIES: &str =
@@ -51,13 +52,29 @@ pub static ALIAS: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
 
 #[derive(Clone)]
 struct Svc {
-    data: ArcShift<TimeTableData>,
+    data: Arc<DashMap<usize, ArcShift<TimeTableData>>>,
 }
 
 impl Svc {
     pub fn new() -> Self {
         Self {
-            data: ArcShift::new(TimeTableData::default()),
+            data: Arc::new(DashMap::new()),
+        }
+    }
+
+    pub fn get(&self, key: usize) -> ArcShift<TimeTableData> {
+        match self.data.get(&key) {
+            Some(d) => d.clone(),
+            None => {
+                println!("Generiere neu {}", key);
+                let val = ArcShift::new(TimeTableData::default());
+                self.data.insert(key, val.clone());
+                {
+                    let val = val.clone();
+                    std::thread::spawn(move || fetch_task(val, key));
+                }
+                val
+            }
         }
     }
 }
@@ -81,15 +98,20 @@ impl Display for TimeTableData {
     }
 }
 
-fn fetch_task(mut arc: ArcShift<TimeTableData>) -> ! {
-    loop {
-        if let Some(data) = fetch() {
+fn fetch_task(mut arc: ArcShift<TimeTableData>, e_id: usize) {
+    println!("Task für {} gestartet", e_id);
+    'legs: loop {
+        if let Some(data) = fetch(e_id) {
+            if data.blocks.is_empty() {
+                break 'legs;
+            }
             arc.update(data)
         } else {
             error!("Irgendwas ist beim holen der Daten schiefgelaufen, probiere es in 5 Minuten nochmal")
         }
         sleep(std::time::Duration::from_secs(300));
     }
+    println!("Task für {} beendet, weil keine Daten bekommen", e_id);
 }
 
 // fn main() {
@@ -103,16 +125,15 @@ async fn main() {
     let addr = SocketAddr::from(([0, 0, 0, 0], 3022));
     let listener = TcpListener::bind(addr).await.unwrap();
 
-    let mut svc = Svc::new();
-    let data = svc.data.clone();
+    let svc = Svc::new();
 
-    let _fetch_task_handle = std::thread::spawn(move || fetch_task(data));
+    svc.get(1908);
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
-        svc.data.reload();
-        let svc = svc.clone();
+        svc.clone().get(1908).reload();
 
+        let svc = svc.clone();
         let io = TokioIo::new(stream);
 
         tokio::task::spawn(async move {
@@ -133,7 +154,7 @@ pub fn create_timestamp(stamp: &str) -> Option<String> {
     Some(time.format("%Y%m%dT%H%M%SZ").to_string())
 }
 
-pub fn login() -> Option<(String, String)> {
+pub fn login(username: Option<String>, password: Option<String>) -> Option<(String, String)> {
     let mut untis_cookies = String::from(SCHOOL_SPECIFIC_COOKIES);
 
     let url = "https://nessa.webuntis.com/WebUntis/oidc/login";
@@ -152,15 +173,24 @@ pub fn login() -> Option<(String, String)> {
     let res = client.get(redirect_url).send().ok()?;
     let login_url = res.url().clone();
     let mut params = HashMap::new();
-    let (_, username) = std::env::vars().find(|(k, _)| k == "USERNAME")?;
+    let username = match username {
+        Some(u) => u,
+        None => std::env::vars().find(|(k, _)| k == "USERNAME")?.1,
+    };
     params.insert("_username", username);
-    let (_, password) = std::env::vars().find(|(k, _)| k == "PASSWORD")?;
+    let password = match password {
+        Some(p) => p,
+        None => std::env::vars().find(|(k, _)| k == "PASSWORD")?.1,
+    };
     params.insert("_password", password);
     let res = client.post(login_url).form(&params).send().ok()?;
     let text = res.text().ok()?;
     let redirect = text.split(";url=").nth(1)?.split("\">").next()?;
     let res = client.get(redirect).send().ok()?;
-    let params = construct_oauth_params(res);
+    let params = construct_oauth_params(
+        res.url().to_string(),
+        res.text().unwrap_or_default().to_string(),
+    );
     let res = client
         .post("https://gamma-achim.de/iserv/oauth/v2/auth")
         .form(&params)
@@ -180,8 +210,69 @@ pub fn login() -> Option<(String, String)> {
     Some((token, untis_cookies))
 }
 
-fn construct_oauth_params(res: Response) -> HashMap<&'static str, &'static str> {
-    let url = res.url().to_string().leak();
+pub async fn async_login(
+    username: Option<String>,
+    password: Option<String>,
+) -> Option<(String, String)> {
+    let mut untis_cookies = String::from(SCHOOL_SPECIFIC_COOKIES);
+
+    let url = "https://nessa.webuntis.com/WebUntis/oidc/login";
+    let cookie_jar = Arc::new(Jar::default());
+    let client = reqwest::Client::builder()
+        .cookie_store(true)
+        .cookie_provider(cookie_jar.clone())
+        .build()
+        .ok()?;
+    let res = client
+        .get(url)
+        .header("Cookie", &untis_cookies)
+        .send()
+        .await
+        .ok()?;
+    let redirect_url = res.url().clone();
+    let res = client.get(redirect_url).send().await.ok()?;
+    let login_url = res.url().clone();
+    let mut params = HashMap::new();
+    let username = match username {
+        Some(u) => u,
+        None => std::env::vars().find(|(k, _)| k == "USERNAME")?.1,
+    };
+    params.insert("_username", username);
+    let password = match password {
+        Some(p) => p,
+        None => std::env::vars().find(|(k, _)| k == "PASSWORD")?.1,
+    };
+    params.insert("_password", password);
+    let res = client.post(login_url).form(&params).send().await.ok()?;
+    let text = res.text().await.ok()?;
+    let redirect = text.split(";url=").nth(1)?.split("\">").next()?;
+    let res = client.get(redirect).send().await.ok()?;
+    let params = construct_oauth_params(
+        res.url().to_string(),
+        res.text().await.unwrap_or_default().to_string(),
+    );
+    let res = client
+        .post("https://gamma-achim.de/iserv/oauth/v2/auth")
+        .form(&params)
+        .send()
+        .await
+        .ok()?;
+
+    let res = client
+        .get("https://nessa.webuntis.com/WebUntis/api/token/new")
+        .send()
+        .await
+        .ok()?;
+
+    let token = res.text().await.ok()?;
+    let url = Url::parse("https://nessa.webuntis.com/WebUntis").ok()?;
+    let needed_cookies = cookie_jar.cookies(&url)?;
+    untis_cookies.push_str(needed_cookies.to_str().ok()?);
+
+    Some((token, untis_cookies))
+}
+
+fn construct_oauth_params(url: String, text: String) -> HashMap<&'static str, &'static str> {
     let mut params = HashMap::new();
     params.insert("accepted", "");
     params.insert(
@@ -209,6 +300,7 @@ fn construct_oauth_params(res: Response) -> HashMap<&'static str, &'static str> 
         "openid email iserv:webuntis",
     );
     let nonce = url
+        .leak()
         .split("nonce=")
         .nth(1)
         .unwrap()
@@ -217,7 +309,6 @@ fn construct_oauth_params(res: Response) -> HashMap<&'static str, &'static str> 
         .unwrap();
     params.insert("iserv_oauth_server_authorize_form[nonce]", nonce);
     let token = {
-        let text = res.text().unwrap();
         text.split("iserv_oauth_server_authorize_form__token")
             .nth(1)
             .unwrap()
@@ -233,6 +324,12 @@ fn construct_oauth_params(res: Response) -> HashMap<&'static str, &'static str> 
     params
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct LoginData {
+    username: String,
+    password: String,
+}
+
 impl Service<Request<Incoming>> for Svc {
     type Response = hyper::http::response::Response<BoxBody<Bytes, hyper::Error>>;
 
@@ -245,7 +342,7 @@ impl Service<Request<Incoming>> for Svc {
         let res = match (req.method(), req.uri().path()) {
             (&Method::GET, "/") => {
                 let options = self
-                    .data
+                    .get(1908)
                     .blocks
                     .keys()
                     .fold(String::new(), |acc, el| format!("{acc}\n{el}"))
@@ -255,10 +352,14 @@ impl Service<Request<Incoming>> for Svc {
             }
             (&Method::GET, "/ics") => {
                 let mut calendar = ICalendar::new("2.0", "ics-rs");
-                add_to_calendar(&mut calendar, &self.data, "default");
-                req.uri().query().unwrap().split(',').for_each(|el| {
-                    add_to_calendar(&mut calendar, &self.data, el);
-                });
+                add_to_calendar(&mut calendar, &self.get(1908), "default");
+                req.uri()
+                    .query()
+                    .unwrap_or_default()
+                    .split(',')
+                    .for_each(|el| {
+                        add_to_calendar(&mut calendar, &self.get(1908), el);
+                    });
                 let cal_string = calendar.to_string().replace(",", "\\,").replace(";", "\\;");
                 let res = hyper::http::response::Response::new(full(cal_string));
                 let (mut parts, body) = res.into_parts();
@@ -266,6 +367,52 @@ impl Service<Request<Incoming>> for Svc {
                     .headers
                     .insert("conent-type", HeaderValue::from_static("text/calendar"));
                 hyper::http::response::Response::from_parts(parts, body)
+            }
+            (&Method::GET, _) => {
+                if req.uri().path().starts_with("/ics/") {
+                    let id = req
+                        .uri()
+                        .path()
+                        .trim_start_matches("/ics/")
+                        .parse::<usize>()
+                        .unwrap_or_default();
+                    println!("{id}");
+                    // TODO: Id by grade or by person, both are equally possible, just need to differentiate. But prob person to just give out the correct timetable
+                    // Query Params for further filtering? If not, just give out everything associated with the id. Possibly also blacklist query params, with exclamation marks or underscores
+                    // If by person, just fetch one full week to find the courses they have and then use the grade data (cache person id relations)
+                    let mut calendar = ICalendar::new("2.0", "ics-rs");
+                    // let mut q = req.uri().query().unwrap_or_default().split(',');
+                    self.get(id)
+                        .blocks
+                        .iter()
+                        .for_each(|(k, _)| add_to_calendar(&mut calendar, &self.get(id), k));
+                    // add_to_calendar(&mut calendar, &self.get(id), "default");
+                    let cal_string = calendar.to_string().replace(",", "\\,").replace(";", "\\;");
+                    let res = hyper::http::response::Response::new(full(cal_string));
+                    let (mut parts, body) = res.into_parts();
+                    parts
+                        .headers
+                        .insert("conent-type", HeaderValue::from_static("text/calendar"));
+                    hyper::http::response::Response::from_parts(parts, body)
+                } else {
+                    hyper::http::response::Response::new(empty())
+                }
+            }
+            (&Method::POST, "/id") => {
+                // TODO: Do login and get the jwt token to fetch the person and class id
+                // println!("{:?}", req.body().collect());
+                return Box::pin(async move {
+                    let collected = req.into_body().collect().await.unwrap();
+                    let d =
+                        serde_json::from_slice::<LoginData>(collected.aggregate().chunk()).unwrap();
+                    let Some((token, _)) = async_login(Some(d.username), Some(d.password)).await
+                    else {
+                        panic!("")
+                    };
+                    Ok(hyper::http::response::Response::new(full(
+                        token.leak().split(".").nth(1).unwrap(),
+                    )))
+                });
             }
             _ => hyper::http::response::Response::new(empty()),
         };
