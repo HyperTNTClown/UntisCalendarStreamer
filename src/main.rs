@@ -248,7 +248,9 @@ impl Service<Request<Incoming>> for Svc {
                     .data
                     .blocks
                     .keys()
-                    .fold(String::new(), |acc, el| format!("{acc}\n{el}"));
+                    .fold(String::new(), |acc, el| format!("{acc}\n{el}"))
+                    .trim()
+                    .to_owned();
                 hyper::http::response::Response::new(full(options))
             }
             (&Method::GET, "/ics") => {

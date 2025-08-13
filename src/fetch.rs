@@ -200,7 +200,13 @@ fn generate_summary(entry: CalendarEntry) -> ics::properties::Summary<'static> {
         .find(|el| el.status != Status::Removed)
         .unwrap_or_default();
 
-    let mut sum = format!("{} - {}", name, room.display_name);
+    let teacher_name = entry
+        .teachers
+        .iter()
+        .find(|el| el.status != Status::Removed)
+        .map(|el| el.long_name.clone())
+        .unwrap_or_default();
+    let mut sum = format!("{} - {} - {}", name, room.display_name, teacher_name);
     if room.status == Status::Substitution {
         sum = "🔄 ".to_owned() + &sum;
     }
