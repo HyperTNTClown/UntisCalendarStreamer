@@ -16,8 +16,8 @@ use crate::{
 const NEGATIVE_OFFSET: u64 = 14;
 const POSITIVE_OFFSET: usize = 70;
 
-pub fn fetch(e_id: usize) -> Option<TimeTableData> {
-    let (token, cookies) = login(None, None)?;
+pub fn fetch(e_id: usize, cookies: String) -> Option<(TimeTableData, String)> {
+    let (token, cookies) = login(cookies)?;
     let client = Client::new();
     let req_builder = client
         .get("https://nessa.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail")
@@ -30,7 +30,7 @@ pub fn fetch(e_id: usize) -> Option<TimeTableData> {
         .first_day()
         - Days::new(NEGATIVE_OFFSET);
 
-    Some(starting_day
+    Some((starting_day
         .iter_days()
         .take(NEGATIVE_OFFSET as usize + POSITIVE_OFFSET)
         .filter_map(|day| {
@@ -38,7 +38,7 @@ pub fn fetch(e_id: usize) -> Option<TimeTableData> {
             fetch_for_day(day, req, e_id)
         })
         .reduce(combine_ttd)
-        .unwrap_or_default())
+        .unwrap_or_default(), cookies))
 }
 
 fn combine_ttd(mut ttd1: TimeTableData, ttd2: TimeTableData) -> TimeTableData {

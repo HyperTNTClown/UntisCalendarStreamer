@@ -24,13 +24,13 @@ use hyper::{
 };
 use hyper_util::rt::TokioIo;
 use ics::{Event, ICalendar};
-use log::{debug, error};
 use reqwest::{
     cookie::{CookieStore, Jar},
     Url,
 };
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
+use tracing::{debug, error, info, warn};
 
 const SCHOOL_SPECIFIC_COOKIES: &str =
     "schoolname=\"_Z3ltbmFzaXVtIGFtIG1hcmt0\"; Tenant-Id=\"5761300\";";
@@ -66,12 +66,15 @@ impl Svc {
         match self.data.get(&key) {
             Some(d) => d.clone(),
             None => {
-                println!("Generiere neu {}", key);
+                info!("Generiere neu {}", key);
                 let val = ArcShift::new(TimeTableData::default());
                 self.data.insert(key, val.clone());
                 {
                     let val = val.clone();
-                    std::thread::spawn(move || fetch_task(val, key));
+                    std::thread::Builder::new()
+                        .name(format!("ID {} Worker", key))
+                        .spawn(move || fetch_task(val, key))
+                        .unwrap();
                 }
                 val
             }
@@ -99,9 +102,11 @@ impl Display for TimeTableData {
 }
 
 fn fetch_task(mut arc: ArcShift<TimeTableData>, e_id: usize) {
-    println!("Task für {} gestartet", e_id);
+    info!("Task für {} gestartet", e_id);
+    let mut cookies = String::new();
     'legs: loop {
-        if let Some(data) = fetch(e_id) {
+        if let Some((data, c)) = fetch(e_id, cookies.clone()) {
+            cookies = c;
             if data.blocks.is_empty() {
                 break 'legs;
             }
@@ -111,16 +116,12 @@ fn fetch_task(mut arc: ArcShift<TimeTableData>, e_id: usize) {
         }
         sleep(std::time::Duration::from_secs(300));
     }
-    println!("Task für {} beendet, weil keine Daten bekommen", e_id);
+    warn!("Task für {} beendet, weil keine Daten bekommen", e_id);
 }
-
-// fn main() {
-//     dotenv::dotenv().ok();
-//     fetch::fetch();
-// }
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt().with_thread_names(true).init();
     dotenv::dotenv().ok();
     let addr = SocketAddr::from(([0, 0, 0, 0], 3022));
     let listener = TcpListener::bind(addr).await.unwrap();
@@ -154,7 +155,12 @@ pub fn create_timestamp(stamp: &str) -> Option<String> {
     Some(time.format("%Y%m%dT%H%M%SZ").to_string())
 }
 
-pub fn login(username: Option<String>, password: Option<String>) -> Option<(String, String)> {
+pub fn login(cookies: String) -> Option<(String, String)> {
+    if let Some((token, cookies)) = try_refresh(cookies) {
+        info!("Session could be recovered");
+        return Some((token, cookies));
+    }
+    info!("Creating new session and loggin in through oauth");
     let mut untis_cookies = String::from(SCHOOL_SPECIFIC_COOKIES);
 
     let url = "https://nessa.webuntis.com/WebUntis/oidc/login";
@@ -173,15 +179,9 @@ pub fn login(username: Option<String>, password: Option<String>) -> Option<(Stri
     let res = client.get(redirect_url).send().ok()?;
     let login_url = res.url().clone();
     let mut params = HashMap::new();
-    let username = match username {
-        Some(u) => u,
-        None => std::env::vars().find(|(k, _)| k == "USERNAME")?.1,
-    };
+    let (_, username) = std::env::vars().find(|(k, _)| k == "USERNAME")?;
     params.insert("_username", username);
-    let password = match password {
-        Some(p) => p,
-        None => std::env::vars().find(|(k, _)| k == "PASSWORD")?.1,
-    };
+    let (_, password) = std::env::vars().find(|(k, _)| k == "PASSWORD")?;
     params.insert("_password", password);
     let res = client.post(login_url).form(&params).send().ok()?;
     let text = res.text().ok()?;
@@ -208,6 +208,27 @@ pub fn login(username: Option<String>, password: Option<String>) -> Option<(Stri
     untis_cookies.push_str(needed_cookies.to_str().ok()?);
 
     Some((token, untis_cookies))
+}
+
+fn try_refresh(cookies: String) -> Option<(String, String)> {
+    // let cookie_jar = Arc::new(Jar::default());
+    let client = reqwest::blocking::Client::builder()
+        // .cookie_store(true)
+        // .cookie_provider(cookie_jar.clone())
+        .build()
+        .ok()?;
+    let res = client
+        .get("https://nessa.webuntis.com/WebUntis/api/token/new")
+        .header("Cookie", &cookies)
+        .send()
+        .ok()?;
+    let token = res.text().ok()?;
+    // println!("Tried getting token: {token}");
+    if token.starts_with("<!doctype html>") {
+        warn!("Did not get a token");
+        return None;
+    }
+    Some((token, cookies))
 }
 
 pub async fn async_login(
@@ -376,7 +397,7 @@ impl Service<Request<Incoming>> for Svc {
                         .trim_start_matches("/ics/")
                         .parse::<usize>()
                         .unwrap_or_default();
-                    println!("{id}");
+                    debug!("{id}");
                     // TODO: Id by grade or by person, both are equally possible, just need to differentiate. But prob person to just give out the correct timetable
                     // Query Params for further filtering? If not, just give out everything associated with the id. Possibly also blacklist query params, with exclamation marks or underscores
                     // If by person, just fetch one full week to find the courses they have and then use the grade data (cache person id relations)
