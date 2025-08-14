@@ -133,7 +133,7 @@ async fn main() {
         Ok(journald_layer) => {
             registry
                 .with(journald_layer)
-                .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+                // .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
                 .init();
             println!("Logging to journald + stderr");
         }
