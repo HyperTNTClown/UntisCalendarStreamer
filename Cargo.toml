@@ -21,8 +21,9 @@ serde = { version = "1.0.218", features = ["derive"] }
 serde_derive = "1.0.218"
 serde_json = "1.0.139"
 simplelog = "0.12.2"
-tokio = { version = "1.43.0", features = ["full"] }
+tokio = { version = "1.43.0", features = ["full", "tracing"] }
 tracing = "0.1.41"
+tracing-journald = "0.3.1"
 tracing-subscriber = "0.3.19"
 uid = "0.1.8"
 uuid = "1.15.0"

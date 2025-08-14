@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::{Days, Local, NaiveDate, NaiveTime};
+use chrono::{Datelike, Days, Local, NaiveDate, NaiveTime};
 use ics::{
     properties::{Description, DtEnd, DtStart, Summary},
     Event,
 };
-use reqwest::blocking::{Client, RequestBuilder};
+use reqwest::{Client, RequestBuilder};
 
 use crate::{
     create_timestamp,
@@ -16,8 +16,8 @@ use crate::{
 const NEGATIVE_OFFSET: u64 = 14;
 const POSITIVE_OFFSET: usize = 70;
 
-pub fn fetch(e_id: usize, cookies: String) -> Option<(TimeTableData, String)> {
-    let (token, cookies) = login(cookies)?;
+pub async fn fetch(e_id: usize, cookies: String) -> Option<(TimeTableData, String)> {
+    let (token, cookies) = login(None, None, Some(cookies)).await?;
     let client = Client::new();
     let req_builder = client
         .get("https://nessa.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail")
@@ -30,18 +30,28 @@ pub fn fetch(e_id: usize, cookies: String) -> Option<(TimeTableData, String)> {
         .first_day()
         - Days::new(NEGATIVE_OFFSET);
 
-    Some((starting_day
+    let days = starting_day
         .iter_days()
         .take(NEGATIVE_OFFSET as usize + POSITIVE_OFFSET)
-        .filter_map(|day| {
-            let req = req_builder.try_clone().unwrap_or_else(|| client.get("https://nessa.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail").bearer_auth(token.clone()).header("Cookie", cookies.clone()));
-            fetch_for_day(day, req, e_id)
-        })
-        .reduce(combine_ttd)
-        .unwrap_or_default(), cookies))
+        .filter(|d| !matches!(d.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun));
+
+    let mut ttd = TimeTableData::default();
+    for day in days {
+        let req = req_builder.try_clone().unwrap_or_else(|| {
+            client
+                .get("https://nessa.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail")
+                .bearer_auth(token.clone())
+                .header("Cookie", cookies.clone())
+        });
+        if let Some(t) = fetch_for_day(day, req, e_id).await {
+            combine_ttd(&mut ttd, t)
+        };
+    }
+
+    Some((ttd, cookies))
 }
 
-fn combine_ttd(mut ttd1: TimeTableData, ttd2: TimeTableData) -> TimeTableData {
+fn combine_ttd(ttd1: &mut TimeTableData, ttd2: TimeTableData) {
     for (subj, mut v) in ttd2.blocks {
         match ttd1.blocks.get_mut(&subj) {
             Some(vec) => vec.append(&mut v),
@@ -58,11 +68,9 @@ fn combine_ttd(mut ttd1: TimeTableData, ttd2: TimeTableData) -> TimeTableData {
             }
         }
     }
-
-    ttd1
 }
 
-fn fetch_for_day(
+async fn fetch_for_day(
     day: NaiveDate,
     req_builder: RequestBuilder,
     e_id: usize,
@@ -72,10 +80,11 @@ fn fetch_for_day(
     let res = req_builder
         .query(&generate_params_for_date(day, e_id))
         .send()
+        .await
         .ok()?;
     // println!("{:?}", res);
 
-    let data = res.json::<Root>().unwrap_or_default();
+    let data = res.json::<Root>().await.unwrap_or_default();
 
     ttd.tasks = data
         .calendar_entries

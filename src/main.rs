@@ -10,7 +10,6 @@ use std::{
     net::SocketAddr,
     pin::Pin,
     sync::{Arc, LazyLock},
-    thread::sleep,
 };
 
 use arcshift::ArcShift;
@@ -30,7 +29,8 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, info_span, warn, warn_span, Instrument, Level};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 const SCHOOL_SPECIFIC_COOKIES: &str =
     "schoolname=\"_Z3ltbmFzaXVtIGFtIG1hcmt0\"; Tenant-Id=\"5761300\";";
@@ -52,12 +52,14 @@ pub static ALIAS: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
 
 #[derive(Clone)]
 struct Svc {
+    rt: Arc<tokio::runtime::Runtime>,
     data: Arc<DashMap<usize, ArcShift<TimeTableData>>>,
 }
 
 impl Svc {
-    pub fn new() -> Self {
+    pub fn new(rt: tokio::runtime::Runtime) -> Self {
         Self {
+            rt: Arc::new(rt),
             data: Arc::new(DashMap::new()),
         }
     }
@@ -71,9 +73,13 @@ impl Svc {
                 self.data.insert(key, val.clone());
                 {
                     let val = val.clone();
-                    std::thread::Builder::new()
-                        .name(format!("ID {} Worker", key))
-                        .spawn(move || fetch_task(val, key))
+                    let span = info_span!("ID", %key);
+                    tokio::task::Builder::new()
+                        .name(&format!("ID {key}"))
+                        .spawn_on(
+                            async move { fetch_task(val, key).instrument(span).await },
+                            self.rt.handle(),
+                        )
                         .unwrap();
                 }
                 val
@@ -101,11 +107,11 @@ impl Display for TimeTableData {
     }
 }
 
-fn fetch_task(mut arc: ArcShift<TimeTableData>, e_id: usize) {
+async fn fetch_task(mut arc: ArcShift<TimeTableData>, e_id: usize) {
     info!("Task für {} gestartet", e_id);
     let mut cookies = String::new();
     'legs: loop {
-        if let Some((data, c)) = fetch(e_id, cookies.clone()) {
+        if let Some((data, c)) = fetch(e_id, cookies.clone()).await {
             cookies = c;
             if data.blocks.is_empty() {
                 break 'legs;
@@ -114,19 +120,42 @@ fn fetch_task(mut arc: ArcShift<TimeTableData>, e_id: usize) {
         } else {
             error!("Irgendwas ist beim holen der Daten schiefgelaufen, probiere es in 5 Minuten nochmal")
         }
-        sleep(std::time::Duration::from_secs(300));
+        tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
     }
     warn!("Task für {} beendet, weil keine Daten bekommen", e_id);
 }
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt().with_thread_names(true).init();
+    let registry = tracing_subscriber::registry();
+
+    match tracing_journald::layer() {
+        Ok(journald_layer) => {
+            registry
+                .with(journald_layer)
+                .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+                .init();
+            println!("Logging to journald + stderr");
+        }
+        Err(_) => {
+            // Fallback to just stderr/file logging
+            registry
+                .with(tracing_subscriber::filter::LevelFilter::INFO)
+                .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+                .init();
+        }
+    }
+
     dotenv::dotenv().ok();
     let addr = SocketAddr::from(([0, 0, 0, 0], 3022));
     let listener = TcpListener::bind(addr).await.unwrap();
 
-    let svc = Svc::new();
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let svc = Svc::new(rt);
 
     svc.get(1908);
 
@@ -155,86 +184,18 @@ pub fn create_timestamp(stamp: &str) -> Option<String> {
     Some(time.format("%Y%m%dT%H%M%SZ").to_string())
 }
 
-pub fn login(cookies: String) -> Option<(String, String)> {
-    if let Some((token, cookies)) = try_refresh(cookies) {
-        info!("Session could be recovered");
-        return Some((token, cookies));
-    }
-    info!("Creating new session and loggin in through oauth");
-    let mut untis_cookies = String::from(SCHOOL_SPECIFIC_COOKIES);
-
-    let url = "https://nessa.webuntis.com/WebUntis/oidc/login";
-    let cookie_jar = Arc::new(Jar::default());
-    let client = reqwest::blocking::Client::builder()
-        .cookie_store(true)
-        .cookie_provider(cookie_jar.clone())
-        .build()
-        .ok()?;
-    let res = client
-        .get(url)
-        .header("Cookie", &untis_cookies)
-        .send()
-        .ok()?;
-    let redirect_url = res.url().clone();
-    let res = client.get(redirect_url).send().ok()?;
-    let login_url = res.url().clone();
-    let mut params = HashMap::new();
-    let (_, username) = std::env::vars().find(|(k, _)| k == "USERNAME")?;
-    params.insert("_username", username);
-    let (_, password) = std::env::vars().find(|(k, _)| k == "PASSWORD")?;
-    params.insert("_password", password);
-    let res = client.post(login_url).form(&params).send().ok()?;
-    let text = res.text().ok()?;
-    let redirect = text.split(";url=").nth(1)?.split("\">").next()?;
-    let res = client.get(redirect).send().ok()?;
-    let params = construct_oauth_params(
-        res.url().to_string(),
-        res.text().unwrap_or_default().to_string(),
-    );
-    let res = client
-        .post("https://gamma-achim.de/iserv/oauth/v2/auth")
-        .form(&params)
-        .send()
-        .ok()?;
-
-    let res = client
-        .get("https://nessa.webuntis.com/WebUntis/api/token/new")
-        .send()
-        .ok()?;
-
-    let token = res.text().ok()?;
-    let url = Url::parse("https://nessa.webuntis.com/WebUntis").ok()?;
-    let needed_cookies = cookie_jar.cookies(&url)?;
-    untis_cookies.push_str(needed_cookies.to_str().ok()?);
-
-    Some((token, untis_cookies))
-}
-
-fn try_refresh(cookies: String) -> Option<(String, String)> {
-    // let cookie_jar = Arc::new(Jar::default());
-    let client = reqwest::blocking::Client::builder()
-        // .cookie_store(true)
-        // .cookie_provider(cookie_jar.clone())
-        .build()
-        .ok()?;
-    let res = client
-        .get("https://nessa.webuntis.com/WebUntis/api/token/new")
-        .header("Cookie", &cookies)
-        .send()
-        .ok()?;
-    let token = res.text().ok()?;
-    // println!("Tried getting token: {token}");
-    if token.starts_with("<!doctype html>") {
-        warn!("Did not get a token");
-        return None;
-    }
-    Some((token, cookies))
-}
-
-pub async fn async_login(
+pub async fn login(
     username: Option<String>,
     password: Option<String>,
+    cookies: Option<String>,
 ) -> Option<(String, String)> {
+    if let Some(c) = cookies {
+        if let Some((token, cookies)) = try_refresh(c).await {
+            info!("Session could be recovered");
+            return Some((token, cookies));
+        }
+    }
+    info!("Creating new session and loggin in through oauth");
     let mut untis_cookies = String::from(SCHOOL_SPECIFIC_COOKIES);
 
     let url = "https://nessa.webuntis.com/WebUntis/oidc/login";
@@ -291,6 +252,22 @@ pub async fn async_login(
     untis_cookies.push_str(needed_cookies.to_str().ok()?);
 
     Some((token, untis_cookies))
+}
+
+async fn try_refresh(cookies: String) -> Option<(String, String)> {
+    let client = reqwest::Client::builder().build().ok()?;
+    let res = client
+        .get("https://nessa.webuntis.com/WebUntis/api/token/new")
+        .header("Cookie", &cookies)
+        .send()
+        .await
+        .ok()?;
+    let token = res.text().await.ok()?;
+    if token.starts_with("<!doctype html>") {
+        warn!("Did not get a token");
+        return None;
+    }
+    Some((token, cookies))
 }
 
 fn construct_oauth_params(url: String, text: String) -> HashMap<&'static str, &'static str> {
@@ -426,7 +403,7 @@ impl Service<Request<Incoming>> for Svc {
                     let collected = req.into_body().collect().await.unwrap();
                     let d =
                         serde_json::from_slice::<LoginData>(collected.aggregate().chunk()).unwrap();
-                    let Some((token, _)) = async_login(Some(d.username), Some(d.password)).await
+                    let Some((token, _)) = login(Some(d.username), Some(d.password), None).await
                     else {
                         panic!("")
                     };
