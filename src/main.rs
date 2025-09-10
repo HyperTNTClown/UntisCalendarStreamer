@@ -383,6 +383,10 @@ impl Service<Request<Incoming>> for Svc {
                     self.get(id)
                         .blocks
                         .iter()
+                        .filter(|(name, list)| {
+                            name.contains("default")
+                                || !list.iter().all(|el| el.to_string().contains("➕"))
+                        })
                         .for_each(|(k, _)| add_to_calendar(&mut calendar, &self.get(id), k));
                     // add_to_calendar(&mut calendar, &self.get(id), "default");
                     let cal_string = calendar.to_string().replace(",", "\\,").replace(";", "\\;");
