@@ -242,11 +242,11 @@ fn generate_params_for_date(date: NaiveDate, e_id: usize) -> HashMap<String, Str
     let mut map = HashMap::new();
 
     map.insert("elementId".to_owned(), e_id.to_string());
-    if e_id > 1000 {
-        map.insert("elementType".to_owned(), "1".to_owned());
-    } else {
-        map.insert("elementType".to_owned(), "5".to_owned());
-    }
+    // if e_id > 1000 {
+    //     map.insert("elementType".to_owned(), "1".to_owned());
+    // } else {
+    map.insert("elementType".to_owned(), "5".to_owned());
+    // }
 
     let start_time = date.and_time(NaiveTime::MIN);
     let start = start_time.to_string().replace(" ", "T");
