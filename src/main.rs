@@ -53,7 +53,7 @@ pub static ALIAS: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
 #[derive(Clone)]
 struct Svc {
     rt: Arc<tokio::runtime::Runtime>,
-    data: Arc<DashMap<usize, ArcShift<TimeTableData>>>,
+    data: Arc<DashMap<isize, ArcShift<TimeTableData>>>,
 }
 
 impl Svc {
@@ -64,7 +64,7 @@ impl Svc {
         }
     }
 
-    pub fn get(&self, key: usize) -> ArcShift<TimeTableData> {
+    pub fn get(&self, key: isize) -> ArcShift<TimeTableData> {
         match self.data.get(&key) {
             Some(d) => d.clone(),
             None => {
@@ -107,7 +107,7 @@ impl Display for TimeTableData {
     }
 }
 
-async fn fetch_task(mut arc: ArcShift<TimeTableData>, e_id: usize) {
+async fn fetch_task(mut arc: ArcShift<TimeTableData>, e_id: isize) {
     info!("Task für {} gestartet", e_id);
     let mut cookies = String::new();
     'legs: loop {
@@ -157,11 +157,11 @@ async fn main() {
 
     let svc = Svc::new(rt);
 
-    svc.get(1908);
+    svc.get(-1908);
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
-        svc.clone().get(1908).reload();
+        svc.clone().get(-1908).reload();
 
         let svc = svc.clone();
         let io = TokioIo::new(stream);
@@ -340,7 +340,7 @@ impl Service<Request<Incoming>> for Svc {
         let res = match (req.method(), req.uri().path()) {
             (&Method::GET, "/") => {
                 let options = self
-                    .get(1908)
+                    .get(-1908)
                     .blocks
                     .keys()
                     .fold(String::new(), |acc, el| format!("{acc}\n{el}"))
@@ -350,13 +350,13 @@ impl Service<Request<Incoming>> for Svc {
             }
             (&Method::GET, "/ics") => {
                 let mut calendar = ICalendar::new("2.0", "ics-rs");
-                add_to_calendar(&mut calendar, &self.get(1908), "default");
+                add_to_calendar(&mut calendar, &self.get(-1908), "default");
                 req.uri()
                     .query()
                     .unwrap_or_default()
                     .split(',')
                     .for_each(|el| {
-                        add_to_calendar(&mut calendar, &self.get(1908), el);
+                        add_to_calendar(&mut calendar, &self.get(-1908), el);
                     });
                 let cal_string = calendar.to_string().replace(",", "\\,").replace(";", "\\;");
                 let res = hyper::http::response::Response::new(full(cal_string));
@@ -372,7 +372,7 @@ impl Service<Request<Incoming>> for Svc {
                         .uri()
                         .path()
                         .trim_start_matches("/ics/")
-                        .parse::<usize>()
+                        .parse::<isize>()
                         .unwrap_or_default();
                     debug!("{id}");
                     // TODO: Id by grade or by person, both are equally possible, just need to differentiate. But prob person to just give out the correct timetable

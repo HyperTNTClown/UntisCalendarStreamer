@@ -16,7 +16,7 @@ use crate::{
 const NEGATIVE_OFFSET: u64 = 14;
 const POSITIVE_OFFSET: usize = 70;
 
-pub async fn fetch(e_id: usize, cookies: String) -> Option<(TimeTableData, String)> {
+pub async fn fetch(e_id: isize, cookies: String) -> Option<(TimeTableData, String)> {
     let (token, cookies) = login(None, None, Some(cookies)).await?;
     let client = Client::new();
     let req_builder = client
@@ -73,7 +73,7 @@ fn combine_ttd(ttd1: &mut TimeTableData, ttd2: TimeTableData) {
 async fn fetch_for_day(
     day: NaiveDate,
     req_builder: RequestBuilder,
-    e_id: usize,
+    e_id: isize,
 ) -> Option<TimeTableData> {
     let mut ttd = TimeTableData::default();
 
@@ -238,15 +238,15 @@ fn add_timestamps(event: &mut Event<'_>, entry: &CalendarEntry) {
     ));
 }
 
-fn generate_params_for_date(date: NaiveDate, e_id: usize) -> HashMap<String, String> {
+fn generate_params_for_date(date: NaiveDate, e_id: isize) -> HashMap<String, String> {
     let mut map = HashMap::new();
 
-    map.insert("elementId".to_owned(), e_id.to_string());
-    // if e_id > 1000 {
-    //     map.insert("elementType".to_owned(), "1".to_owned());
-    // } else {
-    map.insert("elementType".to_owned(), "5".to_owned());
-    // }
+    map.insert("elementId".to_owned(), e_id.abs().to_string());
+    if e_id < 0 {
+        map.insert("elementType".to_owned(), "1".to_owned());
+    } else {
+        map.insert("elementType".to_owned(), "5".to_owned());
+    }
 
     let start_time = date.and_time(NaiveTime::MIN);
     let start = start_time.to_string().replace(" ", "T");
