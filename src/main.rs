@@ -8,6 +8,7 @@ use std::{
     future::Future,
     io::Read,
     net::SocketAddr,
+    num::{NonZero, NonZeroU32},
     pin::Pin,
     sync::{Arc, LazyLock},
 };
@@ -17,6 +18,7 @@ use bytes::{Buf, Bytes};
 use chrono::Local;
 use dashmap::DashMap;
 use fetch::fetch;
+use governor::{DefaultDirectRateLimiter, Quota};
 use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
 use hyper::{
     body::Incoming, header::HeaderValue, server::conn::http1, service::Service, Method, Request,
@@ -25,12 +27,17 @@ use hyper_util::rt::TokioIo;
 use ics::{Event, ICalendar};
 use reqwest::{
     cookie::{CookieStore, Jar},
-    Url,
+    Client, ClientBuilder, Url,
 };
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tracing::{debug, error, info, info_span, warn, warn_span, Instrument, Level};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+const GRADES: [isize; 24] = [
+    1908, 1905, 1902, 1899, 1896, 1893, 1890, 1887, 1884, 1881, 1878, 1875, 1872, 1869, 1866, 1863,
+    1860, 1857, 1854, 1851, 1848, 1845, 1842, 1839,
+];
 
 const SCHOOL_SPECIFIC_COOKIES: &str =
     "schoolname=\"_Z3ltbmFzaXVtIGFtIG1hcmt0\"; Tenant-Id=\"5761300\";";
@@ -53,13 +60,17 @@ pub static ALIAS: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
 #[derive(Clone)]
 struct Svc {
     rt: Arc<tokio::runtime::Runtime>,
+    client: Client,
+    limiter: Arc<DefaultDirectRateLimiter>,
     data: Arc<DashMap<isize, ArcShift<TimeTableData>>>,
 }
 
 impl Svc {
-    pub fn new(rt: tokio::runtime::Runtime) -> Self {
+    pub fn new(rt: tokio::runtime::Runtime, limiter: DefaultDirectRateLimiter) -> Self {
         Self {
             rt: Arc::new(rt),
+            limiter: Arc::new(limiter),
+            client: Client::new(),
             data: Arc::new(DashMap::new()),
         }
     }
@@ -74,10 +85,12 @@ impl Svc {
                 {
                     let val = val.clone();
                     let span = info_span!("ID", %key);
+                    let client = self.client.clone();
+                    let limiter = self.limiter.clone();
                     tokio::task::Builder::new()
                         .name(&format!("ID {key}"))
                         .spawn_on(
-                            async move { fetch_task(val, key).instrument(span).await },
+                            async move { fetch_task(val, client, limiter,  key).instrument(span).await },
                             self.rt.handle(),
                         )
                         .unwrap();
@@ -92,6 +105,7 @@ impl Svc {
 struct TimeTableData {
     blocks: HashMap<String, Vec<Event<'static>>>,
     tasks: HashMap<String, HashSet<Event<'static>>>,
+    teachers: HashMap<String, HashSet<String>>,
 }
 
 impl Display for TimeTableData {
@@ -107,11 +121,16 @@ impl Display for TimeTableData {
     }
 }
 
-async fn fetch_task(mut arc: ArcShift<TimeTableData>, e_id: isize) {
+async fn fetch_task(
+    mut arc: ArcShift<TimeTableData>,
+    client: reqwest::Client,
+    limiter: Arc<DefaultDirectRateLimiter>,
+    e_id: isize,
+) {
     info!("Task für {} gestartet", e_id);
     let mut cookies = String::new();
     'legs: loop {
-        if let Some((data, c)) = fetch(e_id, cookies.clone()).await {
+        if let Some((data, c)) = fetch(e_id, &client, &limiter, cookies.clone()).await {
             cookies = c;
             if data.blocks.is_empty() {
                 break 'legs;
@@ -155,9 +174,14 @@ async fn main() {
         .build()
         .unwrap();
 
-    let svc = Svc::new(rt);
+    let limiter = DefaultDirectRateLimiter::direct(Quota::per_second(NonZero::new(50).unwrap()));
 
-    svc.get(-1908);
+    let svc = Svc::new(rt, limiter);
+
+    // svc.get(-1908);
+    for el in GRADES {
+        svc.get(-el);
+    }
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
@@ -233,7 +257,7 @@ pub async fn login(
         res.url().to_string(),
         res.text().await.unwrap_or_default().to_string(),
     );
-    let res = client
+    let _res = client
         .post("https://gamma-achim.de/iserv/oauth/v2/auth")
         .form(&params)
         .send()
@@ -358,6 +382,26 @@ impl Service<Request<Incoming>> for Svc {
                     .for_each(|el| {
                         add_to_calendar(&mut calendar, &self.get(-1908), el);
                     });
+                let cal_string = calendar.to_string().replace(",", "\\,").replace(";", "\\;");
+                let res = hyper::http::response::Response::new(full(cal_string));
+                let (mut parts, body) = res.into_parts();
+                parts
+                    .headers
+                    .insert("conent-type", HeaderValue::from_static("text/calendar"));
+                hyper::http::response::Response::from_parts(parts, body)
+            }
+            (&Method::GET, "/t") => {
+                let mut calendar = ICalendar::new("2.0", "ics-rs");
+                let teacher = req.uri().query().unwrap_or_default().to_string();
+                for g in GRADES {
+                    let ttd = self.get(-g);
+                    let class = ttd.teachers.get(&teacher);
+                    if let Some(c) = class {
+                        for c in c {
+                            add_to_calendar(&mut calendar, &ttd, c)
+                        }
+                    }
+                }
                 let cal_string = calendar.to_string().replace(",", "\\,").replace(";", "\\;");
                 let res = hyper::http::response::Response::new(full(cal_string));
                 let (mut parts, body) = res.into_parts();

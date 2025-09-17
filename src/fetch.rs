@@ -1,6 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 
 use chrono::{Datelike, Days, Local, NaiveDate, NaiveTime};
+use governor::{DefaultDirectRateLimiter, Jitter};
 use ics::{
     properties::{Description, DtEnd, DtStart, Summary},
     Event,
@@ -16,9 +21,14 @@ use crate::{
 const NEGATIVE_OFFSET: u64 = 14;
 const POSITIVE_OFFSET: usize = 70;
 
-pub async fn fetch(e_id: isize, cookies: String) -> Option<(TimeTableData, String)> {
+pub async fn fetch(
+    e_id: isize,
+    client: &Client,
+    limiter: &Arc<DefaultDirectRateLimiter>,
+    cookies: String,
+) -> Option<(TimeTableData, String)> {
     let (token, cookies) = login(None, None, Some(cookies)).await?;
-    let client = Client::new();
+    // let client = Client::new();
     let req_builder = client
         .get("https://nessa.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail")
         .bearer_auth(token.clone())
@@ -36,7 +46,9 @@ pub async fn fetch(e_id: isize, cookies: String) -> Option<(TimeTableData, Strin
         .filter(|d| !matches!(d.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun));
 
     let mut ttd = TimeTableData::default();
+    let jitter = Jitter::up_to(Duration::from_secs(3));
     for day in days {
+        limiter.until_ready_with_jitter(jitter).await;
         let req = req_builder.try_clone().unwrap_or_else(|| {
             client
                 .get("https://nessa.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail")
@@ -68,6 +80,16 @@ fn combine_ttd(ttd1: &mut TimeTableData, ttd2: TimeTableData) {
             }
         }
     }
+    for (teach, subj) in ttd2.teachers {
+        match ttd1.teachers.get_mut(&teach) {
+            Some(set) => {
+                set.extend(subj);
+            }
+            None => {
+                ttd1.teachers.insert(teach, HashSet::from_iter(subj));
+            }
+        }
+    }
 }
 
 async fn fetch_for_day(
@@ -94,7 +116,16 @@ async fn fetch_for_day(
 
     ttd.blocks = HashMap::new();
     data.calendar_entries.into_iter().for_each(|entry| {
-        let (subj, ev) = create_block_event(entry);
+        let (subj, teacher, ev) = create_block_event(entry);
+        match ttd.teachers.get_mut(&teacher) {
+            Some(set) => {
+                set.insert(subj.clone());
+            }
+            None => {
+                ttd.teachers
+                    .insert(teacher, HashSet::from_iter(vec![subj.clone()]));
+            }
+        }
         match ttd.blocks.get_mut(&subj) {
             Some(vec) => vec.push(ev),
             None => {
@@ -137,7 +168,7 @@ fn create_hw_events(entry: &CalendarEntry) -> Option<(String, HashSet<Event<'sta
     Some((subject, hw))
 }
 
-fn create_block_event(entry: CalendarEntry) -> (String, Event<'static>) {
+fn create_block_event(entry: CalendarEntry) -> (String, String, Event<'static>) {
     let id = entry.id.to_string();
     let dtstamp = chrono::Local::now().format("%Y%m%dT%H%M%SZ").to_string();
     let mut ev = Event::new(id, dtstamp);
@@ -151,10 +182,17 @@ fn create_block_event(entry: CalendarEntry) -> (String, Event<'static>) {
     ev.push(generate_description(&entry));
     ev.push(location(&entry));
     add_timestamps(&mut ev, &entry);
+    let teacher_name = entry
+        .teachers
+        .iter()
+        .find(|el| el.status != Status::Removed)
+        .map(|el| el.short_name.clone())
+        .unwrap_or_default();
     (
         entry
             .subject
             .map_or("default".to_owned(), |s| s.display_name),
+        teacher_name,
         ev.clone(),
     )
 }
