@@ -38,7 +38,7 @@ pub struct CalendarEntry {
     pub students: Vec<Value>,
     pub sub_type: Option<SubType>,
     pub subject: Option<Subject>,
-    pub subst_text: Value,
+    pub subst_text: Option<String>,
     pub teachers: Vec<Teacher>,
     pub teaching_content: Option<String>,
     pub teaching_content_files: Vec<Value>,

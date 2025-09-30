@@ -188,13 +188,17 @@ fn create_block_event(entry: CalendarEntry) -> (String, String, Event<'static>) 
         .find(|el| el.status != Status::Removed)
         .map(|el| el.short_name.clone())
         .unwrap_or_default();
-    (
-        entry
-            .subject
-            .map_or("default".to_owned(), |s| s.display_name),
-        teacher_name,
-        ev.clone(),
-    )
+
+    let subj = {
+        if let Some(klausi) = entry.subst_text.unwrap_or_default().strip_prefix("13 ") {
+            klausi.split_whitespace().next().unwrap().to_owned()
+        } else {
+            entry
+                .subject
+                .map_or("default".to_owned(), |s| s.display_name)
+        }
+    };
+    (subj, teacher_name, ev.clone())
 }
 
 fn location(entry: &CalendarEntry) -> ics::properties::Location<'static> {

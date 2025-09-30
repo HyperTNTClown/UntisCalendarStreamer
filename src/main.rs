@@ -174,7 +174,7 @@ async fn main() {
         .build()
         .unwrap();
 
-    let limiter = DefaultDirectRateLimiter::direct(Quota::per_second(NonZero::new(50).unwrap()));
+    let limiter = DefaultDirectRateLimiter::direct(Quota::per_second(NonZero::new(20).unwrap()));
 
     let svc = Svc::new(rt, limiter);
 
