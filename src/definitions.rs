@@ -72,6 +72,8 @@ pub enum Type {
     NormalTeachingPeriod,
     #[serde(rename = "ADDITIONAL_PERIOD")]
     AddiotionalPeriod,
+    #[serde(rename = "EVENT")]
+    Event,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
