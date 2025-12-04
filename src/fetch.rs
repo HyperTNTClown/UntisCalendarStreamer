@@ -30,7 +30,7 @@ pub async fn fetch(
     let (token, cookies) = login(None, None, Some(cookies)).await?;
     // let client = Client::new();
     let req_builder = client
-        .get("https://nessa.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail")
+        .get("https://gamma-achim.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail")
         .bearer_auth(token.clone())
         .header("Cookie", cookies.clone());
 
@@ -51,7 +51,7 @@ pub async fn fetch(
         limiter.until_ready_with_jitter(jitter).await;
         let req = req_builder.try_clone().unwrap_or_else(|| {
             client
-                .get("https://nessa.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail")
+                .get("https://gamma-achim.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail")
                 .bearer_auth(token.clone())
                 .header("Cookie", cookies.clone())
         });

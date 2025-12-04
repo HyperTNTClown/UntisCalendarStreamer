@@ -39,8 +39,7 @@ const GRADES: [isize; 24] = [
     1860, 1857, 1854, 1851, 1848, 1845, 1842, 1839,
 ];
 
-const SCHOOL_SPECIFIC_COOKIES: &str =
-    "schoolname=\"_Z3ltbmFzaXVtIGFtIG1hcmt0\"; Tenant-Id=\"5761300\";";
+const SCHOOL_SPECIFIC_COOKIES: &str = "schoolname=\"_Z2FtbWEtYWNoaW0=\"; Tenant-Id=\"5761300\";";
 
 pub static ALIAS: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
     let path = "./alias";
@@ -222,7 +221,7 @@ pub async fn login(
     info!("Creating new session and loggin in through oauth");
     let mut untis_cookies = String::from(SCHOOL_SPECIFIC_COOKIES);
 
-    let url = "https://nessa.webuntis.com/WebUntis/oidc/login";
+    let url = "https://gamma-achim.webuntis.com/WebUntis/oidc/login";
     let cookie_jar = Arc::new(Jar::default());
     let client = reqwest::Client::builder()
         .cookie_store(true)
@@ -265,13 +264,13 @@ pub async fn login(
         .ok()?;
 
     let res = client
-        .get("https://nessa.webuntis.com/WebUntis/api/token/new")
+        .get("https://gamma-achim.webuntis.com/WebUntis/api/token/new")
         .send()
         .await
         .ok()?;
 
     let token = res.text().await.ok()?;
-    let url = Url::parse("https://nessa.webuntis.com/WebUntis").ok()?;
+    let url = Url::parse("https://gamma-achim.webuntis.com/WebUntis").ok()?;
     let needed_cookies = cookie_jar.cookies(&url)?;
     untis_cookies.push_str(needed_cookies.to_str().ok()?);
 
@@ -281,13 +280,13 @@ pub async fn login(
 async fn try_refresh(cookies: String) -> Option<(String, String)> {
     let client = reqwest::Client::builder().build().ok()?;
     let res = client
-        .get("https://nessa.webuntis.com/WebUntis/api/token/new")
+        .get("https://gamma-achim.webuntis.com/WebUntis/api/token/new")
         .header("Cookie", &cookies)
         .send()
         .await
         .ok()?;
     let token = res.text().await.ok()?;
-    if token.starts_with("<!doctype html>") {
+    if token.to_lowercase().contains("<!doctype html>") {
         warn!("Did not get a token");
         return None;
     }
