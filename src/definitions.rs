@@ -62,7 +62,8 @@ pub enum Status {
     Removed,
     #[serde(rename = "REGULAR")]
     Regular,
-    Default(String),
+    #[serde(untagged)]
+    Unknown(String),
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -74,6 +75,10 @@ pub enum Type {
     AddiotionalPeriod,
     #[serde(rename = "EVENT")]
     Event,
+    #[serde(rename = "EXAM")]
+    Exam,
+    #[serde(untagged)]
+    Unknown(String),
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
