@@ -1,6 +1,7 @@
 mod definitions;
 mod fetch;
 
+use core::panic;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
@@ -176,8 +177,9 @@ async fn main() {
     let limiter = DefaultDirectRateLimiter::direct(Quota::per_second(NonZero::new(20).unwrap()));
 
     let svc = Svc::new(rt, limiter);
-
-    // svc.get(-1908);
+    #[cfg(debug_assertions)]
+    svc.get(-1908);
+    #[cfg(not(debug_assertions))]
     for el in GRADES {
         svc.get(-el);
     }
@@ -249,19 +251,18 @@ pub async fn login(
     };
     params.insert("_password", password);
     let res = client.post(login_url).form(&params).send().await.ok()?;
-    let text = res.text().await.ok()?;
-    let redirect = text.split(";url=").nth(1)?.split("\">").next()?;
-    let res = client.get(redirect).send().await.ok()?;
-    let params = construct_oauth_params(
+    let mut params = construct_oauth_params(
         res.url().to_string(),
         res.text().await.unwrap_or_default().to_string(),
     );
     let _res = client
-        .post("https://gamma-achim.de/iserv/oauth/v2/auth")
+        .post(format!(
+            "https://gamma-achim.de/iserv/auth/auth?client_id={}&response_type={}&response_mode=query&redirect_uri={}&state={}&scope={}&nonce={}"
+        , params.remove("authorize_form[client_id]").unwrap(), params.remove("authorize_form[response_type]").unwrap(), params.remove("authorize_form[redirect_uri]").unwrap(), params.remove("authorize_form[state]").unwrap(), params.remove("authorize_form[scope]").unwrap(), params.remove("authorize_form[nonce]").unwrap()))
         .form(&params)
         .send()
         .await
-        .ok()?;
+        .unwrap();
 
     let res = client
         .get("https://gamma-achim.webuntis.com/WebUntis/api/token/new")
@@ -295,15 +296,16 @@ async fn try_refresh(cookies: String) -> Option<(String, String)> {
 
 fn construct_oauth_params(url: String, text: String) -> HashMap<&'static str, &'static str> {
     let mut params = HashMap::new();
-    params.insert("accepted", "");
+    params.insert("authorize_form[actions][accept]", "");
+    // params.insert("accepted", "");
     params.insert(
-        "iserv_oauth_server_authorize_form[client_id]",
+        "authorize_form[client_id]",
         "15_61zgj5ci0q4ows8swo80so0g4wkckgwsg40owkg4k8cc8cg04k",
     );
-    params.insert("iserv_oauth_server_authorize_form[response_type]", "code");
+    params.insert("authorize_form[response_type]", "code");
     // TODO: parse the URL, as it seems that it is prone to change
     params.insert(
-        "iserv_oauth_server_authorize_form[redirect_uri]",
+        "authorize_form[redirect_uri]",
         "https://oidc.webuntis.com/WebUntis/oidc/callback",
     );
     // TODO: decode URI Parts, as it might cause more problems in the future
@@ -315,11 +317,8 @@ fn construct_oauth_params(url: String, text: String) -> HashMap<&'static str, &'
         .next()
         .unwrap()
         .replace("%3D", "=");
-    params.insert("iserv_oauth_server_authorize_form[state]", state.leak());
-    params.insert(
-        "iserv_oauth_server_authorize_form[scope]",
-        "openid email iserv:webuntis",
-    );
+    params.insert("authorize_form[state]", state.leak());
+    params.insert("authorize_form[scope]", "openid email iserv:webuntis");
     let nonce = url
         .leak()
         .split("nonce=")
@@ -328,9 +327,9 @@ fn construct_oauth_params(url: String, text: String) -> HashMap<&'static str, &'
         .split("&")
         .next()
         .unwrap();
-    params.insert("iserv_oauth_server_authorize_form[nonce]", nonce);
+    params.insert("authorize_form[nonce]", nonce);
     let token = {
-        text.split("iserv_oauth_server_authorize_form__token")
+        text.split("authorize_form__token")
             .nth(1)
             .unwrap()
             .split("value=\"")
@@ -341,7 +340,7 @@ fn construct_oauth_params(url: String, text: String) -> HashMap<&'static str, &'
             .unwrap()
             .to_owned()
     };
-    params.insert("iserv_oauth_server_authorize_form[_token]", token.leak());
+    params.insert("authorize_form[_token]", token.leak());
     params
 }
 
