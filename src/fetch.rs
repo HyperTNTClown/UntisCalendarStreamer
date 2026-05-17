@@ -11,6 +11,7 @@ use ics::{
     Event,
 };
 use reqwest::{Client, RequestBuilder};
+use tracing::error;
 
 use crate::{
     create_timestamp,
@@ -27,7 +28,10 @@ pub async fn fetch(
     limiter: &Arc<DefaultDirectRateLimiter>,
     cookies: String,
 ) -> Option<(TimeTableData, String)> {
-    let (token, cookies) = login(None, None, Some(cookies)).await?;
+    let Some((token, cookies)) = login(None, None, Some(cookies)).await else {
+        error!("Login ist schiefgelaufen");
+        return None;
+    };
     // let client = Client::new();
     let req_builder = client
         .get("https://gamma-achim.webuntis.com/WebUntis/api/rest/view/v2/calendar-entry/detail")
